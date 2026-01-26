@@ -6,6 +6,30 @@ from src.main import process
 from allo.ir.types import int32, Int
 
 
+def test_assign():
+    zero = 0
+
+    def kernel1() -> int32:
+        A: int32 = 0
+        B: int32 = zero
+        return B
+
+    s = process(kernel1)
+
+    # def kernel2(A: int32) -> int32:
+    #     B: int32 = 0
+    #     B = A
+    #     return B
+
+    # s = process(kernel2)
+
+    # def kernel3() -> int32[32]:
+    #     b: int32[32] = 0
+    #     return b
+
+    # s = process(kernel3)
+
+
 def test_assign_logic():
     def kernel1(A: int32) -> int32:
         B: int32 = 0
@@ -61,4 +85,5 @@ def test_assign_logic():
 
 
 if __name__ == "__main__":
-    test_assign_logic()
+    test_assign()
+    # test_assign_logic()

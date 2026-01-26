@@ -6,7 +6,7 @@ from typing import Union
 from collections.abc import Callable
 import ast
 from .utils import parse_ast, SymbolTable, Scope
-from allo.ir.types import Struct, Stream, Stateful, ConstExpr
+from allo.ir.types import AlloType, Struct, Stream, Stateful, ConstExpr
 from allo.memory import DTensor, Layout
 
 
@@ -27,6 +27,7 @@ class ASTProcessor(ast.NodeTransformer):
         self.symbol_table: SymbolTable = symbol_table
         self.global_symbols: dict = global_symbols
         self.scopes: list[Scope] = []
+        self.current_func: list[str] = []
 
     def block_scope_guard(self):
         return BlockScopeGuard(self.scopes)
@@ -37,6 +38,13 @@ class ASTProcessor(ast.NodeTransformer):
             and name not in self.symbol_table.variables
         )
         self.scopes[-1].vars[name] = val
+
+    def put_const(self, name, const):
+        assert (
+            name not in self.symbol_table.functions
+            and name not in self.symbol_table.variables
+        )
+        self.scopes[-1].consts[name] = const
 
     def get_symbol(self, name, allow_missing=False):
         """
@@ -79,9 +87,11 @@ class ASTProcessor(ast.NodeTransformer):
             )
             return self.visit_FunctionDef(ast_module.body[0], instantiate)
         else:
+            if len(ast_module.body) == 1:
+                return self.visit(ast_module.body[0])
             for stmt in ast_module.body:
                 self.visit(stmt)
-            return None
+            return ast_module
 
     def eval_constant(self, node, consts=None):
         """
@@ -96,7 +106,7 @@ class ASTProcessor(ast.NodeTransformer):
             consts.update(self.global_symbols)
         return eval(compile(ast.Expression(node), "", "eval"), consts)
 
-    def resolve_node(self, node: ast.Call):
+    def resolve_node(self, node: ast.AST):
         if isinstance(node, ast.Name):
             return self.global_symbols[node.id]  # limited to single-level symbol lookup
         if isinstance(node, ast.Call):
@@ -188,13 +198,33 @@ class ASTProcessor(ast.NodeTransformer):
             return dtype, shape, refinement_type
         raise NotImplementedError
 
-    def visit_Name(self, node: ast.Name):
+    def visit_broadcast(
+        self, node: ast.AST, dtype: AlloType, target_shape: list[int]
+    ) -> ast.AST:
+        """
+        Broadcast an expression to a specific shape. Return the broadcasted expression if broadcast is needed, otherwise return the original expression.
+        """
+        if not hasattr(node, "dtype"):
+            node.dtype = dtype
+        assert hasattr(node, "shape")
+        if node.shape == target_shape:
+            return node
         raise NotImplementedError
 
+    def visit_Name(self, node: ast.Name):
+        var = self.get_symbol(node.id, allow_missing=True)
+        if var is not None:
+            node.dtype, node.shape = var.dtype, var.shape
+            return node
+        const_node = ast.Constant(self.eval_constant(node))
+        const_node.shape = tuple()
+        return const_node
+
     def visit_Constant(self, node: ast.Constant):
-        # literals
         # e.g., 1, 1.0, True, False
-        raise NotImplementedError
+        node.const_value = self.eval_constant(node)
+        node.shape = tuple()  # dtype unknown
+        return node
 
     def visit_Tuple(self, node: ast.Tuple):
         # e.g., A[i, j] -> Indexing
@@ -252,7 +282,45 @@ class ASTProcessor(ast.NodeTransformer):
         # e.g., C: float32[32, 32] = 0.0
         #       B: int32 = 0
         #       acc: Int(4) @ Stateful = 0
-        raise NotImplementedError
+        dtype, shape, spec = self.visit_type_annotation(node.annotation)
+        assert isinstance(
+            node.target, ast.Name
+        ), "target of AnnAssign must be Name, other type not supported."
+        target_ = self.get_symbol(node.target.id, allow_missing=True)
+        if target_ is not None:
+            assert (
+                node.value is not None
+            ), "Unsupported annotated assignment without a value."
+            # assignment
+            assert (
+                target_.dtype == dtype and target_.shape == shape
+            ), f"Invalid assignment to {node.target.id}, type mismatch."
+            assert not getattr(
+                target_.dtype, "constexpr", False
+            ), "Cannot reassign constants."
+        if getattr(dtype, "constexpr", False):
+            val = self.eval_constant(node.value)
+            self.put_const(node.target.id, val)
+        else:
+            node.value = self.visit_broadcast(self.visit(node.value), dtype, shape)
+            if target_ is None:
+                self.put_var(node.target.id, node.value)
+        node.target.dtype = node.dtype = dtype
+        node.target.shape = node.shape = shape
+        node.target.spec = node.spec = spec
+        node.annotation = ast.Subscript(
+            value=ast.Name(id="__allo__", ctx=ast.Load()),
+            slice=ast.Tuple(
+                elts=[
+                    ast.Name(id=str(dtype), ctx=ast.Load()),
+                    ast.Tuple(elts=shape, ctx=ast.Load()),
+                    ast.Name(id=str(spec), ctx=ast.Load()),
+                ],
+                ctx=ast.Load(),
+            ),
+            ctx=ast.Load(),
+        )
+        return node
 
     def visit_Expr(self, node: ast.Expr):
         if isinstance(node.value, {ast.Call, ast.Constant}):
@@ -285,7 +353,15 @@ class ASTProcessor(ast.NodeTransformer):
         raise NotImplementedError
 
     def visit_Return(self, node: ast.Return):
-        raise NotImplementedError
+        res = self.visit(node.value)
+        func_node = self.symbol_table.functions[self.current_func[-1]]
+        # TODO: support casting and broadcasting
+        if hasattr(res, "dtype"):
+            assert res.dtype == func_node.dtype
+        else:
+            res.dtype = func_node.dtype
+        assert res.shape == func_node.shape
+        return node
 
     def visit_With(self, node: ast.With):
         # e.g., with allo.meta_if(cond):
@@ -343,9 +419,11 @@ class ASTProcessor(ast.NodeTransformer):
                     )
                 node.dtype, node.shape = node.returns.dtype, node.returns.shape
             # function body
+            self.symbol_table.functions[func_name] = node
+            self.current_func.append(func_name)
             for stmt in node.body:
                 self.visit(stmt)
-        self.symbol_table.functions[func_name] = node
+            self.current_func.pop()
         return node
 
     # ----- invalid syntax -----

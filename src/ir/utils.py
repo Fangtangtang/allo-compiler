@@ -7,6 +7,7 @@ import textwrap
 from collections.abc import Callable
 from types import FunctionType as PyFunctionType
 from allo.ir.types import AlloType, Struct
+from allo.memory import Memory
 
 
 def parse_ast(src, verbose=False) -> ast.Module:
@@ -83,7 +84,10 @@ def get_global_vars(func):
                 continue
             # collect allowed types
             for name, var in frame.f_locals.items():
-                if isinstance(var, (int, float, AlloType)) or inspect.isfunction(var):
+                # FIXME: find a better way to collect required symbols
+                if isinstance(
+                    var, (int, float, AlloType, Memory, list)
+                ) or inspect.isfunction(var):
                     global_vars[name] = var
             # boundary
             if frame.f_code.co_name in stop:
@@ -118,6 +122,12 @@ def get_global_vars(func):
                     worklist.append(val)
 
     return all_globals
+
+
+class Scope:
+    def __init__(self):
+        self.consts = {}
+        self.vars = {}
 
 
 class ASTResolver:

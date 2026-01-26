@@ -31,6 +31,13 @@ class ASTProcessor(ast.NodeTransformer):
     def block_scope_guard(self):
         return BlockScopeGuard(self.scopes)
 
+    def put_var(self, name, val):
+        assert (
+            name not in self.symbol_table.functions
+            and name not in self.symbol_table.variables
+        )
+        self.scopes[-1].vars[name] = val
+
     def get_symbol(self, name, allow_missing=False):
         """
         Get the value of a symbol from the current scope chain.
@@ -302,10 +309,42 @@ class ASTProcessor(ast.NodeTransformer):
                 func_name = node.name
             # arguments
             for arg in node.args.args:
-                arg.dtype, arg.shape, arg.spec = self.visit_type_annotation(arg.annotation)
-                assert getattr(arg.dtype, "stateful", False), f"Function parameter '{arg.arg}' cannot be Stateful."
+                arg.dtype, arg.shape, arg.spec = self.visit_type_annotation(
+                    arg.annotation
+                )
+                assert not getattr(
+                    arg.dtype, "stateful", False
+                ), f"Function parameter '{arg.arg}' cannot be Stateful."
                 # TODO: Dtentor
-                
+                assert self.get_symbol(name=arg.arg, allow_missing=True) is None, (
+                    f"Argument name '{arg.arg}' conflicts with an existing symbol. "
+                    f"Please choose a different name to avoid the conflict."
+                )
+                self.put_var(name=arg.arg, val=arg)
+            # return type
+            if not (
+                (isinstance(node.returns, ast.Constant) and node.returns.value is None)
+                or node.returns is None
+            ):
+                if isinstance(node.returns, ast.Tuple):
+                    # Multiple return values
+                    node.returns.shape = []
+                    node.returns.dtype = []
+                    node.returns.spec = []
+                    for elt in node.returns.elts:
+                        elt.dtype, elt.shape, elt.spec = self.visit_type_annotation(elt)
+                        node.returns.dtype.append(elt.dtype)
+                        node.returns.shape.append(elt.shape)
+                        node.returns.spec.append(elt.spec)
+                else:
+                    # Single return value
+                    node.returns.dtype, node.returns.shape, node.returns.spec = (
+                        self.visit_type_annotation(node.returns)
+                    )
+                node.dtype, node.shape = node.returns.dtype, node.returns.shape
+            # function body
+            for stmt in node.body:
+                self.visit(stmt)
         self.symbol_table.functions[func_name] = node
         return node
 

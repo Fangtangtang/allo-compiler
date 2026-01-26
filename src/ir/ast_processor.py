@@ -7,11 +7,25 @@ import ast
 from .utils import parse_ast, SymbolTable
 
 
+class BlockScopeGuard:
+    def __init__(self, scopes:list[dict]):
+        self.scopes:list[dict] = scopes
+
+    def __enter__(self):
+        self.scopes.append({})
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.scopes.pop() 
+
 class ASTProcessor(ast.NodeTransformer):
     def __init__(self, symbol_table: SymbolTable, global_symbols: dict):
         super().__init__()
         self.symbol_table: SymbolTable = symbol_table
         self.global_symbols: dict = global_symbols
+        self.scopes:list[dict] = []
+    
+    def block_scope_guard(self):
+        return BlockScopeGuard(self)
 
     def process(self, fn: Union[Callable, str], instantiate: list = None):
         """
@@ -27,90 +41,105 @@ class ASTProcessor(ast.NodeTransformer):
             assert len(ast_module.body) == 1 and isinstance(
                 ast_module.body[0], ast.FunctionDef
             )
-            raise NotImplementedError
+            return self.visit_FunctionDef(ast_module.body[0], instantiate)
         else:
             for stmt in ast_module.body:
                 self.visit(stmt)
+            return None
 
-    def visit_Name(self, node: ast.Name):
-        raise NotImplementedError
+    # def visit_Name(self, node: ast.Name):
+    #     raise NotImplementedError
 
-    def visit_Constant(self, node: ast.Constant):
-        raise NotImplementedError
+    # def visit_Constant(self, node: ast.Constant):
+    #     raise NotImplementedError
 
-    def visit_Tuple(self, node: ast.Tuple):
-        raise NotImplementedError
+    # def visit_Tuple(self, node: ast.Tuple):
+    #     raise NotImplementedError
 
-    def visit_Dict(self, node: ast.Dict):
-        raise NotImplementedError
+    # def visit_Dict(self, node: ast.Dict):
+    #     raise NotImplementedError
 
-    def visit_Index(self, node: ast.Index):
-        raise NotImplementedError
+    # def visit_Index(self, node: ast.Index):
+    #     raise NotImplementedError
 
-    def visit_Attribute(self, node: ast.Attribute):
-        raise NotImplementedError
+    # def visit_Attribute(self, node: ast.Attribute):
+    #     raise NotImplementedError
 
-    def visit_Subscript(self, node: ast.Subscript):
-        raise NotImplementedError
+    # def visit_Subscript(self, node: ast.Subscript):
+    #     raise NotImplementedError
 
-    def visit_ExtSlice(self, node: ast.ExtSlice):
-        raise NotImplementedError
+    # def visit_ExtSlice(self, node: ast.ExtSlice):
+    #     raise NotImplementedError
 
-    def visit_Slice(self, node: ast.Slice):
-        raise NotImplementedError
+    # def visit_Slice(self, node: ast.Slice):
+    #     raise NotImplementedError
 
-    def visit_UnaryOp(self, node: ast.UnaryOp):
-        raise NotImplementedError
+    # def visit_UnaryOp(self, node: ast.UnaryOp):
+    #     raise NotImplementedError
 
-    def visit_BinOp(self, node: ast.BinOp):
-        raise NotImplementedError
+    # def visit_BinOp(self, node: ast.BinOp):
+    #     raise NotImplementedError
 
-    def visit_BoolOp(self, node: ast.BoolOp):
-        raise NotImplementedError
+    # def visit_BoolOp(self, node: ast.BoolOp):
+    #     raise NotImplementedError
 
-    def visit_Compare(self, node: ast.Compare):
-        raise NotImplementedError
+    # def visit_Compare(self, node: ast.Compare):
+    #     raise NotImplementedError
 
-    def visit_Assign(self, node: ast.Assign):
-        raise NotImplementedError
+    # def visit_Assign(self, node: ast.Assign):
+    #     raise NotImplementedError
 
-    def visit_AugAssign(self, node: ast.AugAssign):
-        raise NotImplementedError
+    # def visit_AugAssign(self, node: ast.AugAssign):
+    #     raise NotImplementedError
 
-    def visit_AnnAssign(self, node: ast.AnnAssign):
-        raise NotImplementedError
+    # def visit_AnnAssign(self, node: ast.AnnAssign):
+    #     raise NotImplementedError
 
     def visit_Expr(self, node: ast.Expr):
         if isinstance(node.value, {ast.Call, ast.Constant}):
             return self.visit(node.value)
         raise RuntimeError(f"Unsupported expression: {node.value}")
 
-    def visit_For(self, node: ast.For):
-        raise NotImplementedError
+    # def visit_For(self, node: ast.For):
+    #     if node.orelse:
+    #         raise RuntimeError("'else' clause for 'for' not supported in Allo kernels")
+    #     raise NotImplementedError
 
-    def visit_While(self, node: ast.While):
-        raise NotImplementedError
+    # def visit_While(self, node: ast.While):
+    #     if node.orelse:
+    #         raise RuntimeError("'else' clause for 'while' not supported in Allo kernels")
+    #     raise NotImplementedError
 
-    def visit_If(self, node: ast.If):
-        raise NotImplementedError
+    # def visit_If(self, node: ast.If):
+    #     raise NotImplementedError
 
-    def visit_IfExp(self, node: ast.IfExp):
-        raise NotImplementedError
+    # def visit_IfExp(self, node: ast.IfExp):
+    #     raise NotImplementedError
 
+    # def visit_Return(self, node: ast.Return):
+    #     raise NotImplementedError
+
+    # def visit_With(self, node: ast.With):
+    #     raise NotImplementedError
+    
     def visit_Call(self, node: ast.Call):
         raise NotImplementedError
 
-    def visit_Return(self, node: ast.Return):
-        raise NotImplementedError
+    def visit_FunctionDef(self, node: ast.FunctionDef, instantiate: list = None):
+        with self.block_scope_guard():
+            # instantiate an instance from template
+            if instantiate is not None:
+                func_name = self.symbol_table.name_mangling(node.name, instantiate)
+                assert hasattr(node, "type_params") and len(node.type_params) == len(instantiate)
+                for type_var, call_val in zip(node.type_params, instantiate):
+                    # TODO
+                    pass
+            else:
+                func_name = node.name
 
-    def visit_With(self, node: ast.With):
-        raise NotImplementedError
-
-    def visit_FunctionDef(self, node: ast.FunctionDef):
         raise NotImplementedError
 
     # ----- invalid syntax -----
-
     def visit_Break(self, node: ast.Break):
         raise RuntimeError("Break statement is not supported")
 

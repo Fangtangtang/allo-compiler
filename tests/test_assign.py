@@ -78,13 +78,27 @@ def test_assign():
         C: __allo__[i32, (), None] = B
         return A    
     """
-    # def kernel3() -> int32[2]:
-    #     b: int32[2]
-    #     b[0] = 1
-    #     b[1] = 0
-    #     return b
 
-    # s = process(kernel3)
+    def kernel3() -> int32[2]:
+        b: int32[2]
+        b[0] = 1
+        b[1] = 0
+        a: int32[2, 2]
+        a[0] = b
+        a[1, :] = b[:]
+        return b
+
+    s = process(kernel3)
+    """
+    def kernel3() -> int32[2]:
+        b: __allo__[i32, (2,), <allo.memory.Layout object at 0x7b69aeff0d10>]
+        b[0]: __allo__[i32, (), None] = 1
+        b[1]: __allo__[i32, (), None] = 0
+        a: __allo__[i32, (2, 2), <allo.memory.Layout object at 0x7b69aee09bb0>]
+        a[0]: __allo__[i32, (2,), None] = b
+        a[1, 0:2:1]: __allo__[i32, (2,), None] = b[0:2:1]
+        return b    
+    """
 
 
 def test_augassign():

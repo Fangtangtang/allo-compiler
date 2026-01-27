@@ -243,14 +243,43 @@ class ASTProcessor(ast.NodeTransformer):
     def visit_Subscript(self, node: ast.Subscript):
         # e.g., A[i], A[i, j]
         # slice: A[0:10], A[::-1]
-        raise NotImplementedError
-
-    def visit_ExtSlice(self, node: ast.ExtSlice):
+        value = self.visit(node.value)
+        if len(value.shape) > 0:
+            # tensor subscript
+            elts = (
+                node.slice.elts if isinstance(node.slice, ast.Tuple) else [node.slice]
+            )
+            assert len(elts) <= len(value.shape)
+            shape = []
+            for idx, elt in enumerate(elts):
+                elt_ = self.visit(elt)
+                if isinstance(elt_, ast.Slice):
+                    if elt_.upper is None:
+                        elt_.upper = ast.Constant(value.shape[idx])
+                    assert isinstance(elt_.lower, ast.Constant)
+                    assert isinstance(elt_.upper, ast.Constant)
+                    assert isinstance(elt_.step, ast.Constant)
+                    size = (elt_.upper.value - elt_.lower.value) // elt_.step.value
+                    if size > 0:
+                        shape.append(size)
+            shape.extend(value.shape[len(elts) :])
+            node.dtype, node.shape = value.dtype, tuple(shape)
+            return node
         raise NotImplementedError
 
     def visit_Slice(self, node: ast.Slice):
         # e.g., A[0:10], A[::-1]
-        raise NotImplementedError
+        if node.lower is not None:
+            node.lower = self.visit(node.lower)
+        else:
+            node.lower = ast.Constant(value=0)
+        if node.upper is not None:
+            node.upper = self.visit(node.upper)
+        if node.step is not None:
+            node.step = self.visit(node.step)
+        else:
+            node.step = ast.Constant(value=1)
+        return node
 
     def visit_UnaryOp(self, node: ast.UnaryOp):
         # e.g., -x, ~x, not x

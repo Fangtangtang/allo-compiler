@@ -6,7 +6,7 @@ from typing import Union
 from collections.abc import Callable
 import ast
 from .utils import parse_ast, SymbolTable, Scope
-from allo.ir.types import AlloType, Struct, Stream, Stateful, ConstExpr
+from allo.ir.types import AlloType, Struct, Stream, Stateful, ConstExpr, uint1
 from allo.memory import DTensor, Layout
 
 
@@ -234,9 +234,6 @@ class ASTProcessor(ast.NodeTransformer):
     def visit_Dict(self, node: ast.Dict):
         raise NotImplementedError
 
-    def visit_Index(self, node: ast.Index):
-        raise NotImplementedError
-
     def visit_Attribute(self, node: ast.Attribute):
         raise NotImplementedError
 
@@ -288,11 +285,19 @@ class ASTProcessor(ast.NodeTransformer):
     def visit_BinOp(self, node: ast.BinOp):
         # e.g., x + y, x - y, x * y, x / y, x // y, x % y, x ** y
         #       x << y, x >> y, x | y, x ^ y, x & y
+        node.left = self.visit(node.left)
+        node.right = self.visit(node.right)
         raise NotImplementedError
 
     def visit_BoolOp(self, node: ast.BoolOp):
         # e.g., x and y, x or y
-        raise NotImplementedError
+        # TODO: test this!
+        for idx, value in enumerate(node.values):
+            value = self.visit(value)
+            assert value.dtype == uint1 and len(getattr(value, "shape", tuple())) == 0
+            node.values[idx] = value
+        node.dtype, node.shape = uint1, tuple()
+        return node
 
     def visit_Compare(self, node: ast.Compare):
         # e.g., x < y, x <= y, x > y, x >= y, x == y, x != y
@@ -365,6 +370,10 @@ class ASTProcessor(ast.NodeTransformer):
 
     def visit_AugAssign(self, node: ast.AugAssign):
         # e.g., A[i] += 1
+        rhs = self.visit(node.value)
+        lhs = self.visit(node.target)
+        assert not getattr(lhs.dtype, "constexpr", False), "Cannot reassign constants."
+        # TODO: replace with binary op + AnnAssign
         raise NotImplementedError
 
     def visit_AnnAssign(self, node: ast.AnnAssign):

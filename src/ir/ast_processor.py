@@ -68,7 +68,7 @@ class ASTProcessor(ast.NodeTransformer):
         consts = {}
         for scope in self.scopes:
             for k, v in scope.consts.items():
-                consts[k] = v
+                consts[k] = v.value
         return consts
 
     def process(self, fn: Union[Callable, str], instantiate: list = None):
@@ -295,6 +295,8 @@ class ASTProcessor(ast.NodeTransformer):
                 assert not getattr(
                     target_.dtype, "constexpr", False
                 ), "Cannot reassign constants."
+                if hasattr(rhs, "dtype"):
+                    assert target_.dtype == rhs.dtype
                 rhs = self.visit_broadcast(rhs, target_.dtype, target_.shape)
             target.dtype, target.shape = rhs.dtype, rhs.shape
             annotation = ast.Subscript(
@@ -345,12 +347,13 @@ class ASTProcessor(ast.NodeTransformer):
                 target_.dtype, "constexpr", False
             ), "Cannot reassign constants."
         if getattr(dtype, "constexpr", False):
-            val = self.eval_constant(node.value)
-            self.put_const(node.target.id, val)
+            node.value = ast.Constant(self.eval_constant(node.value))
+            self.put_const(node.target.id, node.value)
+            node.value.dtype, node.value.shape = dtype, shape
         else:
             node.value = self.visit_broadcast(self.visit(node.value), dtype, shape)
             if target_ is None:
-                self.put_var(node.target.id, node.value)
+                self.put_var(node.target.id, node.target)
         node.target.dtype = node.dtype = dtype
         node.target.shape = node.shape = shape
         node.target.spec = node.spec = spec

@@ -126,7 +126,7 @@ def get_global_vars(func):
 
 class Scope:
     def __init__(self):
-        self.consts = {}
+        self.consts: dict[str, ast.Constant] = {}
         self.vars = {}
 
 

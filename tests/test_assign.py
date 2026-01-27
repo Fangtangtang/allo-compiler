@@ -21,8 +21,18 @@ def test_annassign():
         A: int32 = 0
         B: int32 = zero
         C: ConstExpr[int32] = one
+        D: ConstExpr[int32] = C + 2
         return B
-
+    
+    """
+    Parsed:
+    def kernel1() -> int32:
+        A: __allo__[i32, (), None] = 0
+        B: __allo__[i32, (), None] = 0
+        C: __allo__[<class 'allo.ir.types.ConstExpr'>, (), None] = 1
+        D: __allo__[<class 'allo.ir.types.ConstExpr'>, (), None] = 3
+        return B
+    """
     s = process(kernel1)
 
     def kernel2(A: int32) -> int32:
@@ -127,4 +137,5 @@ def test_assign_logic():
 if __name__ == "__main__":
     # test_annassign()
     test_assign()
+    # test_augassign()
     # test_assign_logic()

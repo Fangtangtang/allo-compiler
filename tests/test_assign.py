@@ -113,8 +113,24 @@ def test_augassign():
 def test_broadcast_init():
     def kernel1() -> int32[2]:
         a: int32[2] = 1
+        b: int32[32, 32] = 0
+        return a
 
     s = process(kernel1)
+
+    def kernel2() -> int32:
+        a: int32 = 1
+        b: int32[32, 32] = a
+        return b[0, 0]
+
+    s = process(kernel2)
+
+    def kernel3() -> int32:
+        a: int32[32] = 1
+        b: int32[4, 32] = a
+        return b[0, 0]
+
+    s = process(kernel3)
 
 
 if __name__ == "__main__":

@@ -199,18 +199,52 @@ class ASTProcessor(ast.NodeTransformer):
         raise NotImplementedError
 
     def visit_broadcast(
-        self, node: ast.AST, dtype: AlloType, target_shape: list[int]
+        self, node: ast.AST, dtype: AlloType, target_shape: tuple[int]
     ) -> ast.AST:
         """
         Broadcast an expression to a specific shape. Return the broadcasted expression if broadcast is needed, otherwise return the original expression.
+
+        See the broadcasting rules in NumPy
+        https://numpy.org/doc/stable/user/basics.broadcasting.html
+        When operating on two arrays, NumPy compares their shapes element-wise.
+        It starts with the trailing (i.e. rightmost) dimension and works its way left.
+        Two dimensions are compatible when
+        1. they are equal, or
+        2. one of them is 1.
         """
         if not hasattr(node, "dtype"):
             node.dtype = dtype
-        assert hasattr(node, "shape")
-        if node.shape == target_shape:
+        shape = getattr(node, "shape", None)
+        assert shape is not None and len(shape) <= len(target_shape)
+        if shape == target_shape:
             return node
-        # np.broadcast_to?
-        raise NotImplementedError
+        padded_shape = [1] * (len(target_shape) - len(shape)) + list(shape)
+        dims = []
+        for idx, (s, t) in enumerate(zip(padded_shape, target_shape)):
+            if s != t:
+                if s != 1:
+                    raise ValueError(f"shape mismatch: {shape} vs {target_shape}")
+                dims.append(idx)
+        call_node = ast.Call(
+            func=ast.Attribute(
+                value=ast.Name(id="__allo__", ctx=ast.Load()),
+                attr="broadcast",
+                ctx=ast.Load(),
+            ),
+            args=[
+                node,  # original node
+                ast.Tuple(
+                    elts=[ast.Constant(value=d) for d in target_shape],
+                    ctx=ast.Load(),
+                ),  # target shape
+                ast.Tuple(
+                    elts=[ast.Constant(value=d) for d in dims],
+                    ctx=ast.Load(),
+                ),  # dims
+            ],
+            keywords=[],
+        )
+        return call_node
 
     def visit_Name(self, node: ast.Name):
         var = self.get_symbol(node.id, allow_missing=True)

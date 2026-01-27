@@ -21,6 +21,7 @@ def test_call_lib():
         return B
 
     s = process(kernel)
+    # allo.customize(kernel)
 
 
 if __name__ == "__main__":

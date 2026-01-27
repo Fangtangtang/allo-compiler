@@ -3,31 +3,71 @@
 
 
 from src.main import process
-from allo.ir.types import int32, Int
+import allo
+from allo.ir.types import int32, Int, ConstExpr
 
 
-def test_assign():
+def test_annassign():
+    """
+    Test the annotated assignment.
+    """
     zero = 0
+    one = 1 + zero
 
     def kernel1() -> int32:
+        """
+        Initialize variables with constants.
+        """
         A: int32 = 0
         B: int32 = zero
+        C: ConstExpr[int32] = one
         return B
 
     s = process(kernel1)
 
-    # def kernel2(A: int32) -> int32:
-    #     B: int32 = 0
-    #     B = A
-    #     return B
+    def kernel2(A: int32) -> int32:
+        """
+        Initialize variables with arguments or varibales.
+        """
+        B: int32 = A
+        C: int32 = B
+        return C
 
-    # s = process(kernel2)
+    s = process(kernel2)
 
     # def kernel3() -> int32[32]:
     #     b: int32[32] = 0
     #     return b
 
     # s = process(kernel3)
+
+
+def test_assign():
+    def kernel1() -> int32:
+        B: int32 = 0
+        A = B
+        return A
+
+    s = process(kernel1)
+
+    def kernel2() -> int32:
+        A: int32 = 0
+        B: int32 = 0
+        C: int32 = 0
+        A, C = B, B
+        return A
+
+    s = process(kernel2)
+
+
+def test_augassign():
+    def kernel1() -> int32:
+        A: int32 = 0
+        B: int32 = 0
+        A += B
+        return A
+
+    s = process(kernel1)
 
 
 def test_assign_logic():
@@ -85,5 +125,6 @@ def test_assign_logic():
 
 
 if __name__ == "__main__":
+    # test_annassign()
     test_assign()
     # test_assign_logic()

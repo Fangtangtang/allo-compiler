@@ -209,6 +209,7 @@ class ASTProcessor(ast.NodeTransformer):
         assert hasattr(node, "shape")
         if node.shape == target_shape:
             return node
+        # np.broadcast_to?
         raise NotImplementedError
 
     def visit_Name(self, node: ast.Name):
@@ -272,7 +273,52 @@ class ASTProcessor(ast.NodeTransformer):
         # e.g., A[i] = 1
         #       v = 1
         #       i, j = 1, 2
-        raise NotImplementedError
+        assert len(node.targets) == 1, "chained assignment not supported"
+        targets = (
+            node.targets[0].elts
+            if isinstance(node.targets[0], ast.Tuple)
+            else [node.targets[0]]
+        )
+        if isinstance(node.value, ast.Call):
+            raise NotImplementedError
+        values = node.value.elts if isinstance(node.value, ast.Tuple) else [node.value]
+        assert len(targets) == len(values)
+        node_list = []
+        for target, value in zip(targets, values):
+            rhs = self.visit(value)
+            target_ = self.get_symbol(target.id, allow_missing=True)
+            if target_ is None:
+                assert getattr(rhs, "dtype", None) is not None
+                assert getattr(rhs, "shape", None) is not None
+                self.put_var(name=target.id, val=target)
+            else:
+                assert not getattr(
+                    target_.dtype, "constexpr", False
+                ), "Cannot reassign constants."
+                rhs = self.visit_broadcast(rhs, target_.dtype, target_.shape)
+            target.dtype, target.shape = rhs.dtype, rhs.shape
+            annotation = ast.Subscript(
+                value=ast.Name(id="__allo__", ctx=ast.Load()),
+                slice=ast.Tuple(
+                    elts=[
+                        ast.Name(id=str(target.dtype), ctx=ast.Load()),
+                        ast.Tuple(elts=target.shape, ctx=ast.Load()),
+                        ast.Name(id=str(getattr(target, "spec", None)), ctx=ast.Load()),
+                    ],
+                    ctx=ast.Load(),
+                ),
+                ctx=ast.Load(),
+            )
+            assign_node = ast.AnnAssign(
+                target=target,
+                annotation=annotation,
+                value=rhs,
+                simple=isinstance(target, ast.Name),
+            )
+            assign_node.dtype, assign_node.shape = rhs.dtype, rhs.shape
+            node_list.append(assign_node)
+        # replace with a list of AnnAssign for normalization
+        return node_list
 
     def visit_AugAssign(self, node: ast.AugAssign):
         # e.g., A[i] += 1
@@ -323,8 +369,11 @@ class ASTProcessor(ast.NodeTransformer):
         return node
 
     def visit_Expr(self, node: ast.Expr):
-        if isinstance(node.value, {ast.Call, ast.Constant}):
+        if isinstance(node.value, ast.Call):
             return self.visit(node.value)
+        if isinstance(node.value, ast.Constant):
+            # comments
+            return None
         raise RuntimeError(f"Unsupported expression: {node.value}")
 
     def visit_For(self, node: ast.For):
@@ -421,8 +470,14 @@ class ASTProcessor(ast.NodeTransformer):
             # function body
             self.symbol_table.functions[func_name] = node
             self.current_func.append(func_name)
+            new_body = []
             for stmt in node.body:
-                self.visit(stmt)
+                res = self.visit(stmt)
+                if isinstance(res, list):
+                    new_body.extend(res)
+                elif res is not None:
+                    new_body.append(res)
+            node.body = new_body
             self.current_func.pop()
         return node
 

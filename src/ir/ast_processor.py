@@ -283,28 +283,40 @@ class ASTProcessor(ast.NodeTransformer):
             raise NotImplementedError
         values = node.value.elts if isinstance(node.value, ast.Tuple) else [node.value]
         assert len(targets) == len(values)
+        # FIXME: this has the potential issue of serializing simultaneous assignment
         node_list = []
         for target, value in zip(targets, values):
             rhs = self.visit(value)
-            target_ = self.get_symbol(target.id, allow_missing=True)
-            if target_ is None:
-                assert getattr(rhs, "dtype", None) is not None
-                assert getattr(rhs, "shape", None) is not None
-                self.put_var(name=target.id, val=target)
+            target_dtype, target_shape = None, None
+            if isinstance(target, ast.Name):
+                target_ = self.get_symbol(target.id, allow_missing=True)
+                if target_ is None:
+                    assert getattr(rhs, "dtype", None) is not None
+                    assert getattr(rhs, "shape", None) is not None
+                    self.put_var(name=target.id, val=target)
+                else:
+                    assert not getattr(
+                        target_.dtype, "constexpr", False
+                    ), "Cannot reassign constants."
+                    target_dtype, target_shape = target_.dtype, target_.shape
             else:
-                assert not getattr(
-                    target_.dtype, "constexpr", False
-                ), "Cannot reassign constants."
+                # e.g., A[i] = 1
+                lhs = self.visit(target)
+                target_dtype, target_shape = lhs.dtype, lhs.shape
+            if target_dtype is not None:
                 if hasattr(rhs, "dtype"):
-                    assert target_.dtype == rhs.dtype
-                rhs = self.visit_broadcast(rhs, target_.dtype, target_.shape)
+                    assert target_dtype == rhs.dtype
+                rhs = self.visit_broadcast(rhs, target_dtype, target_shape)
             target.dtype, target.shape = rhs.dtype, rhs.shape
             annotation = ast.Subscript(
                 value=ast.Name(id="__allo__", ctx=ast.Load()),
                 slice=ast.Tuple(
                     elts=[
                         ast.Name(id=str(target.dtype), ctx=ast.Load()),
-                        ast.Tuple(elts=target.shape, ctx=ast.Load()),
+                        ast.Tuple(
+                            elts=[ast.Constant(value=d) for d in target.shape],
+                            ctx=ast.Load(),
+                        ),
                         ast.Name(id=str(getattr(target, "spec", None)), ctx=ast.Load()),
                     ],
                     ctx=ast.Load(),
@@ -351,9 +363,9 @@ class ASTProcessor(ast.NodeTransformer):
             self.put_const(node.target.id, node.value)
             node.value.dtype, node.value.shape = dtype, shape
         else:
-            node.value = self.visit_broadcast(self.visit(node.value), dtype, shape)
-            if target_ is None:
-                self.put_var(node.target.id, node.target)
+            if node.value is not None:
+                node.value = self.visit_broadcast(self.visit(node.value), dtype, shape)
+            self.put_var(node.target.id, node.target)
         node.target.dtype = node.dtype = dtype
         node.target.shape = node.shape = shape
         node.target.spec = node.spec = spec
@@ -362,7 +374,9 @@ class ASTProcessor(ast.NodeTransformer):
             slice=ast.Tuple(
                 elts=[
                     ast.Name(id=str(dtype), ctx=ast.Load()),
-                    ast.Tuple(elts=shape, ctx=ast.Load()),
+                    ast.Tuple(
+                        elts=[ast.Constant(value=d) for d in shape], ctx=ast.Load()
+                    ),
                     ast.Name(id=str(spec), ctx=ast.Load()),
                 ],
                 ctx=ast.Load(),

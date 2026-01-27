@@ -23,7 +23,7 @@ def test_annassign():
         C: ConstExpr[int32] = one
         D: ConstExpr[int32] = C + 2
         return B
-    
+
     """
     Parsed:
     def kernel1() -> int32:
@@ -45,20 +45,20 @@ def test_annassign():
 
     s = process(kernel2)
 
-    # def kernel3() -> int32[32]:
-    #     b: int32[32] = 0
-    #     return b
+    def kernel3(a: int32[32]) -> int32[32]:
+        b: int32[32] = a
+        return b
 
-    # s = process(kernel3)
+    s = process(kernel3)
 
 
 def test_assign():
-    def kernel1() -> int32:
-        B: int32 = 0
-        A = B
-        return A
+    # def kernel1() -> int32:
+    #     B: int32 = 0
+    #     A = B
+    #     return A
 
-    s = process(kernel1)
+    # s = process(kernel1)
 
     def kernel2() -> int32:
         A: int32 = 0
@@ -68,6 +68,23 @@ def test_assign():
         return A
 
     s = process(kernel2)
+    """
+    Parsed:
+    def kernel2() -> int32:
+        A: __allo__[i32, (), None] = 0
+        B: __allo__[i32, (), None] = 0
+        C: __allo__[i32, (), None] = 0
+        A: __allo__[i32, (), None] = B
+        C: __allo__[i32, (), None] = B
+        return A    
+    """
+    # def kernel3() -> int32[2]:
+    #     b: int32[2]
+    #     b[0] = 1
+    #     b[1] = 0
+    #     return b
+
+    # s = process(kernel3)
 
 
 def test_augassign():

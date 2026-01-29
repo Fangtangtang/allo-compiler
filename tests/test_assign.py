@@ -131,7 +131,13 @@ def test_broadcast_init():
         return b[0, 0]
 
     s = process(kernel3)
-
+    """
+    Parsed:
+    def kernel3() -> int32:
+        a: __allo__[i32, (32,), <allo.memory.Layout object at 0x73f61745e390>] = __allo__.broadcast(1, (32,), (0,))
+        b: __allo__[i32, (4, 32), <allo.memory.Layout object at 0x73f61745df40>] = __allo__.broadcast(a, (4, 32), (0,))
+        return b[0, 0]
+    """
 
 if __name__ == "__main__":
     # test_annassign()

@@ -7,7 +7,7 @@ from collections.abc import Callable
 import ast
 from .utils import parse_ast, SymbolTable, Scope
 from allo.ir.types import AlloType, Struct, Stream, Stateful, ConstExpr, uint1
-from allo.memory import DTensor, Layout
+from allo.memory import Layout
 
 
 class BlockScopeGuard:
@@ -22,10 +22,11 @@ class BlockScopeGuard:
 
 
 class ASTProcessor(ast.NodeTransformer):
-    def __init__(self, symbol_table: SymbolTable, global_symbols: dict):
+    def __init__(self, symbol_table: SymbolTable, global_symbols: dict, typing_rule:str = "default"):
         super().__init__()
         self.symbol_table: SymbolTable = symbol_table
         self.global_symbols: dict = global_symbols
+        self.typing_rule = typing_rule
         self.scopes: list[Scope] = []
         self.current_func: list[str] = []
 
@@ -321,6 +322,8 @@ class ASTProcessor(ast.NodeTransformer):
         #       x << y, x >> y, x | y, x ^ y, x & y
         node.left = self.visit(node.left)
         node.right = self.visit(node.right)
+        # TODO: make implicit type casting explicit
+        # typing rule to define the lhs, rhs, type & shape?
         raise NotImplementedError
 
     def visit_BoolOp(self, node: ast.BoolOp):
@@ -529,7 +532,6 @@ class ASTProcessor(ast.NodeTransformer):
                 assert not getattr(
                     arg.dtype, "stateful", False
                 ), f"Function parameter '{arg.arg}' cannot be Stateful."
-                # TODO: Dtentor
                 assert self.get_symbol(name=arg.arg, allow_missing=True) is None, (
                     f"Argument name '{arg.arg}' conflicts with an existing symbol. "
                     f"Please choose a different name to avoid the conflict."

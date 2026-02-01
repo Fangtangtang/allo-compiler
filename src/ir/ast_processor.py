@@ -6,6 +6,7 @@ from typing import Union
 from collections.abc import Callable
 import ast
 from .utils import parse_ast, SymbolTable, Scope
+from .typing_rule import cpp_style_registry
 from allo.ir.types import AlloType, Struct, Stream, Stateful, ConstExpr, uint1, Index
 from allo.memory import Layout
 
@@ -213,6 +214,7 @@ class ASTProcessor(ast.NodeTransformer):
         Two dimensions are compatible when
         1. they are equal, or
         2. one of them is 1.
+        # TODO: should broadcasting both to make them compatible
         """
         if not hasattr(node, "dtype"):
             node.dtype = dtype
@@ -246,6 +248,28 @@ class ASTProcessor(ast.NodeTransformer):
             ],
             keywords=[],
         )
+        call_node.dtype, call_node.shape = dtype, target_shape
+        return call_node
+
+    def visit_cast(self, node: ast.AST, target_dtype: AlloType) -> ast.AST:
+        if node.dtype == target_dtype:
+            return node
+        # TODO: add checking here to make sure the cast is valid
+        call_node = ast.Call(
+            func=ast.Attribute(
+                value=ast.Name(id="__allo__", ctx=ast.Load()),
+                attr="cast",
+                ctx=ast.Load(),
+            ),
+            args=[
+                node,  # original node
+                ast.Name(id=str(target_dtype), ctx=ast.Load()),
+            ],
+            keywords=[],
+        )
+        call_node.dtype = target_dtype
+        if hasattr(node, "shape"):
+            call_node.shape = node.shape
         return call_node
 
     def visit_Name(self, node: ast.Name):
@@ -323,9 +347,25 @@ class ASTProcessor(ast.NodeTransformer):
         #       x << y, x >> y, x | y, x ^ y, x & y
         node.left = self.visit(node.left)
         node.right = self.visit(node.right)
-        # TODO: make implicit type casting explicit
-        # typing rule to define the lhs, rhs, type & shape?
-        raise NotImplementedError
+        # TODO: const has no dtype?
+        result_type, l_type, r_type = cpp_style_registry[type(node.op)](
+            node.left.dtype, node.right.dtype
+        )
+        left = self.visit_cast(node.left, l_type)
+        right = self.visit_cast(node.right, r_type)
+        result_shape = node.left.shape
+        # TODO: broadcasting
+        call_node = ast.Call(
+            func=ast.Attribute(
+                value=ast.Name(id="__allo__", ctx=ast.Load()),
+                attr=str(type(node.op).__name__),
+                ctx=ast.Load(),
+            ),
+            args=[left, right],
+            keywords=[],
+        )
+        call_node.dtype, call_node.shape = result_type, result_shape
+        return call_node
 
     def visit_BoolOp(self, node: ast.BoolOp):
         # e.g., x and y, x or y
@@ -377,7 +417,7 @@ class ASTProcessor(ast.NodeTransformer):
                 target_dtype, target_shape = lhs.dtype, lhs.shape
             if target_dtype is not None:
                 if hasattr(rhs, "dtype"):
-                    assert target_dtype == rhs.dtype
+                    rhs = self.visit_cast(rhs, target_dtype)
                 rhs = self.visit_broadcast(rhs, target_dtype, target_shape)
             target.dtype, target.shape = rhs.dtype, rhs.shape
             annotation = ast.Subscript(
@@ -440,7 +480,10 @@ class ASTProcessor(ast.NodeTransformer):
             node.value.dtype, node.value.shape = dtype, shape
         else:
             if node.value is not None:
-                node.value = self.visit_broadcast(self.visit(node.value), dtype, shape)
+                value = self.visit(node.value)
+                if hasattr(value, "dtype"):
+                    value = self.visit_cast(value, dtype)
+                node.value = self.visit_broadcast(value, dtype, shape)
             self.put_var(node.target.id, node.target)
         node.target.dtype = node.dtype = dtype
         node.target.shape = node.shape = shape

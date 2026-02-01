@@ -12,6 +12,15 @@ import io
 from contextlib import redirect_stdout
 
 
+def test_vadd():
+    def vadd(A: float32[32], B: float32[32], C: float32[32]):
+        for i in range(32):
+            # syntax sugar for lib op "add"
+            C[i] = A[i] + B[i]
+
+    s = process(vadd)
+
+
 def test_range_for():
     def kernel(A: int32[20]):
         for i in range(10):
@@ -19,7 +28,7 @@ def test_range_for():
         for i in range(10, 20):
             A[i] = i
         for i in range(0, 20, 2):
-            A[i] = i * 2
+            A[i] = i  # * 2
 
     s = process(kernel)
     # print(s.module)
@@ -86,6 +95,7 @@ def test_scf_for():
 
 
 if __name__ == "__main__":
+    test_vadd()
     test_range_for()
     test_variable_bound_for()
     test_variable_bound_for_2()

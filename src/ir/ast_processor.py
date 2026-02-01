@@ -6,7 +6,7 @@ from typing import Union
 from collections.abc import Callable
 import ast
 from .utils import parse_ast, SymbolTable, Scope
-from allo.ir.types import AlloType, Struct, Stream, Stateful, ConstExpr, uint1
+from allo.ir.types import AlloType, Struct, Stream, Stateful, ConstExpr, uint1, Index
 from allo.memory import Layout
 
 
@@ -22,7 +22,12 @@ class BlockScopeGuard:
 
 
 class ASTProcessor(ast.NodeTransformer):
-    def __init__(self, symbol_table: SymbolTable, global_symbols: dict, typing_rule:str = "default"):
+    def __init__(
+        self,
+        symbol_table: SymbolTable,
+        global_symbols: dict,
+        typing_rule: str = "default",
+    ):
         super().__init__()
         self.symbol_table: SymbolTable = symbol_table
         self.global_symbols: dict = global_symbols
@@ -162,11 +167,7 @@ class ASTProcessor(ast.NodeTransformer):
                 const_dtype = copy.deepcopy(base_type)
                 const_dtype.constexpr = True
                 return const_dtype, tuple(), None
-            size = (
-                annotation.slice.value
-                if isinstance(annotation.slice, ast.Index)
-                else annotation.slice
-            )
+            size = annotation.slice
             elts = size.elts if isinstance(size, ast.Tuple) else [size]
             return (
                 base_type,
@@ -471,11 +472,34 @@ class ASTProcessor(ast.NodeTransformer):
     def visit_For(self, node: ast.For):
         # e.g., for i in range(10):
         #       for i in range(0, 10, 2):
-        #       for i in allo.grid(10, 10):
-        #       for i, j in allo.grid(10, 10):
         if node.orelse:
             raise RuntimeError("'else' clause for 'for' not supported in Allo kernels")
-        raise NotImplementedError
+        if isinstance(node.iter, ast.Call):
+            with self.block_scope_guard():
+                iter_ = self.get_symbol(node.target.id, allow_missing=True)
+                assert (
+                    iter_ is None
+                ), "Please choose a different name for the loop iterator."
+                node.target.shape = tuple()
+                node.target.dtype = Index()
+                self.put_var(node.target.id, node.target)
+                ivs = node.iter.args
+                ivs_ = [self.visit(iv) for iv in ivs]
+                if len(ivs_) == 1:
+                    ivs_.insert(0, ast.Constant(value=0))
+                if len(ivs_) == 2:
+                    ivs_.append(ast.Constant(value=1))
+                node.iter.args = ivs_
+                new_body = []
+                for stmt in node.body:
+                    res = self.visit(stmt)
+                    if isinstance(res, list):
+                        new_body.extend(res)
+                    elif res is not None:
+                        new_body.append(res)
+                node.body = new_body
+            return node
+        raise RuntimeError("Unsupported for loop")
 
     def visit_While(self, node: ast.While):
         # e.g., while i < 10:

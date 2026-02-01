@@ -9,43 +9,44 @@ def test_arith():
     def kernel1() -> int32:
         A: int32 = 0
         B: int32 = 0
+        A = 0 - 1
         A = B + B
         return A
 
     s = process(kernel1)
 
-    # def kernel2() -> int32:
-    #     A: int32 = 0
-    #     B: int32 = 0
-    #     A = B - 1
-    #     return A
+    def kernel2() -> int32:
+        A: int32 = 0
+        B: int32 = 0
+        A = B - 1
+        return A
 
-    # s = process(kernel2)
+    s = process(kernel2)
 
-    # def kernel3() -> int32:
-    #     A: int32 = 0
-    #     B: int32 = 0
-    #     C: int32 = 0
-    #     A, C = B * 2, B + 1
-    #     return A
+    def kernel3() -> int32:
+        A: int32 = 0
+        B: int32 = 0
+        C: int32 = 0
+        A, C = B * 2, 1 + B
+        return A
 
-    # s = process(kernel3)
+    s = process(kernel3)
 
-    # def kernel4() -> int32:
-    #     A: int32 = 0
-    #     B: int32 = 0
-    #     A = B // 2
-    #     return A
+    def kernel4() -> int32:
+        A: int32 = 0
+        B: int32 = 0
+        A = B // 2
+        return A
 
-    # s = process(kernel4)
+    s = process(kernel4)
 
-    # def kernel5() -> int32:
-    #     A: int32 = 0
-    #     B: int32 = 0
-    #     A = B % 2
-    #     return A
+    def kernel5() -> int32:
+        A: int32 = 0
+        B: int32 = 0
+        A = B % 2
+        return A
 
-    # s = process(kernel5)
+    s = process(kernel5)
 
     # def kernel6() -> int32:
     #     A: int32 = 0
@@ -55,13 +56,13 @@ def test_arith():
 
     # s = process(kernel6)
 
-    # def kernel7() -> int32:
-    #     A: int32 = 0
-    #     B: int32 = 0
-    #     A = 1 + B + B + 2
-    #     return A
+    def kernel7() -> int32:
+        A: int32 = 0
+        B: int32 = 0
+        A = 1 + B + B + 2
+        return A
 
-    # s = process(kernel7)
+    s = process(kernel7)
 
 
 if __name__ == "__main__":

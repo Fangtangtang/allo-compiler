@@ -252,6 +252,8 @@ class ASTProcessor(ast.NodeTransformer):
         return call_node
 
     def visit_cast(self, node: ast.AST, target_dtype: AlloType) -> ast.AST:
+        if not hasattr(node, "dtype"):
+            node.dtype = target_dtype
         if node.dtype == target_dtype:
             return node
         # TODO: add checking here to make sure the cast is valid
@@ -347,10 +349,17 @@ class ASTProcessor(ast.NodeTransformer):
         #       x << y, x >> y, x | y, x ^ y, x & y
         node.left = self.visit(node.left)
         node.right = self.visit(node.right)
-        # TODO: const has no dtype?
-        result_type, l_type, r_type = cpp_style_registry[type(node.op)](
-            node.left.dtype, node.right.dtype
-        )
+        # costant folding
+        if isinstance(node.left, ast.Constant) and isinstance(node.right, ast.Constant):
+            new_node = ast.Constant(value=self.eval_constant(node))
+            new_node.shape = tuple()
+            return new_node
+        arg1 = getattr(node.left, "dtype", getattr(node.left, "const_value", None))
+        arg2 = getattr(node.right, "dtype", getattr(node.right, "const_value", None))
+        try:
+            result_type, l_type, r_type = cpp_style_registry[type(node.op)](arg1, arg2)
+        except TypeError as e:
+            raise TypeError(f"Type error in binary operation ({node.op}): {e}")
         left = self.visit_cast(node.left, l_type)
         right = self.visit_cast(node.right, r_type)
         result_shape = node.left.shape

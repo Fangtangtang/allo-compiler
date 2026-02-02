@@ -11,8 +11,6 @@ from allo.ir.types import (
     Fixed,
     UFixed,
     int32,
-    float32,
-    float64,
 )
 
 
@@ -368,3 +366,5 @@ cpp_style_registry = {
     ast.UAdd: cpp_style_intrin_rule(),
     ast.Invert: cpp_style_intrin_rule(),
 }
+
+cpp_style_bool = UInt(8)

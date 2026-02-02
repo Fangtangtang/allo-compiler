@@ -6,8 +6,8 @@ from typing import Union
 from collections.abc import Callable
 import ast
 from .utils import parse_ast, SymbolTable, Scope
-from .typing_rule import cpp_style_registry
-from allo.ir.types import AlloType, Struct, Stream, Stateful, ConstExpr, uint1, Index
+from .typing_rule import cpp_style_registry, cpp_style_bool
+from allo.ir.types import AlloType, Struct, Stream, Stateful, ConstExpr, Index
 from allo.memory import Layout
 
 
@@ -427,11 +427,15 @@ class ASTProcessor(ast.NodeTransformer):
     def visit_BoolOp(self, node: ast.BoolOp):
         # e.g., x and y, x or y
         # TODO: test this!
+        print(ast.dump(node))
         for idx, value in enumerate(node.values):
             value = self.visit(value)
-            assert value.dtype == uint1 and len(getattr(value, "shape", tuple())) == 0
+            assert (
+                value.dtype == cpp_style_bool
+                and len(getattr(value, "shape", tuple())) == 0
+            )
             node.values[idx] = value
-        node.dtype, node.shape = uint1, tuple()
+        node.dtype, node.shape = cpp_style_bool, tuple()
         return node
 
     def visit_Compare(self, node: ast.Compare):
@@ -619,7 +623,27 @@ class ASTProcessor(ast.NodeTransformer):
 
     def visit_If(self, node: ast.If):
         # e.g., if i < 10: ... else: ...
-        raise NotImplementedError
+        node.test = self.visit(node.test)
+        with self.block_scope_guard():
+            new_body = []
+            for stmt in node.body:
+                res = self.visit(stmt)
+                if isinstance(res, list):
+                    new_body.extend(res)
+                elif res is not None:
+                    new_body.append(res)
+            node.body = new_body
+        if len(node.orelse) > 0:
+            with self.block_scope_guard():
+                new_body = []
+                for stmt in node.orelse:
+                    res = self.visit(stmt)
+                    if isinstance(res, list):
+                        new_body.extend(res)
+                    elif res is not None:
+                        new_body.append(res)
+                node.orelse = new_body
+        return node
 
     def visit_IfExp(self, node: ast.IfExp):
         # e.g., x if cond else y

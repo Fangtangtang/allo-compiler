@@ -46,6 +46,7 @@ from allo.utils import register_dialect
 from allo.ir.types import AlloType
 from allo.ir.utils import MockArg, MockScalar, MockConstant, MockBuffer
 from .utils import SymbolTable, BlockScopeGuard, Scope
+from .builtin import BUILTIN_HANDLERS
 
 
 class IRBuilder(ast.NodeVisitor):
@@ -182,6 +183,15 @@ class IRBuilder(ast.NodeVisitor):
         raise NotImplementedError
 
     def visit_Call(self, node: ast.Call):
+        if isinstance(node.func, ast.Attribute) and isinstance(
+            node.func.value, ast.Name
+        ):
+            if node.func.value.id == "__allo__":
+                # handling for builtins
+                name = node.func.attr
+                assert name in BUILTIN_HANDLERS
+                handler = BUILTIN_HANDLERS[name](self)
+                return handler.build(node, *node.args)
         raise NotImplementedError
 
     def visit_FunctionDef(self, node: ast.FunctionDef):

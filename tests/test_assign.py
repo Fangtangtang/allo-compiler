@@ -178,7 +178,7 @@ def test_broadcast_init():
 
 
 if __name__ == "__main__":
-    # test_annassign()
-    # test_assign()
+    test_annassign()
+    test_assign()
     test_augassign()
-    # test_broadcast_init()
+    test_broadcast_init()

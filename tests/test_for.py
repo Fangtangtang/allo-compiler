@@ -96,7 +96,7 @@ def test_scf_for():
 
 if __name__ == "__main__":
     test_vadd()
-    # test_range_for()
-    # test_variable_bound_for()
-    # test_variable_bound_for_2()
-    # test_scf_for()
+    test_range_for()
+    test_variable_bound_for()
+    test_variable_bound_for_2()
+    test_scf_for()

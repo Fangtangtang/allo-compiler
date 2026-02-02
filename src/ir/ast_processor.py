@@ -338,12 +338,20 @@ class ASTProcessor(ast.NodeTransformer):
             return node.operand
         if isinstance(node.op, ast.USub):
             # -x -> 0 - x
-            # FIXME
-            raise NotImplementedError
+            if isinstance(node.operand, ast.Constant):
+                assert isinstance(node.operand.value, (int, float))
+                node.operand.value = -node.operand.value
+                return node.operand
+            return self.visit(ast.BinOp(ast.Constant(value=0), ast.Sub(), node.operand))
         if isinstance(node.op, ast.Not):
             # not x
-            # FIXME
-            raise NotImplementedError
+            if isinstance(node.operand, ast.Constant):
+                assert isinstance(node.operand.value, bool)
+                node.operand.value = not node.operand.value
+                return node.operand
+            return self.visit(
+                ast.Compare(ast.Constant(value=False), [ast.Eq()], [node.operand])
+            )
         raise TypeError(f"Unsupported unary operator: {type(node.op).__name__}")
 
     def resolve_broadcast_shape(self, shape_a, shape_b):
@@ -414,6 +422,39 @@ class ASTProcessor(ast.NodeTransformer):
         call_node.dtype, call_node.shape = result_type, result_shape
         return call_node
 
+    def make_assignment(self, target: ast.AST, value: ast.AST) -> ast.AnnAssign:
+        target_dtype = getattr(target, "dtype", None)
+        target_shape = getattr(target, "shape", None)
+        if target_dtype is not None:
+            if hasattr(value, "dtype"):
+                value = self.visit_cast(value, target_dtype)
+            value = self.visit_broadcast(value, target_dtype, target_shape)
+
+        target.dtype, target.shape = value.dtype, value.shape
+        annotation = ast.Subscript(
+            value=ast.Name(id="__allo__", ctx=ast.Load()),
+            slice=ast.Tuple(
+                elts=[
+                    ast.Name(id=str(target.dtype), ctx=ast.Load()),
+                    ast.Tuple(
+                        elts=[ast.Constant(value=d) for d in target.shape],
+                        ctx=ast.Load(),
+                    ),
+                    ast.Name(id=str(getattr(target, "spec", None)), ctx=ast.Load()),
+                ],
+                ctx=ast.Load(),
+            ),
+            ctx=ast.Load(),
+        )
+        assign_node = ast.AnnAssign(
+            target=target,
+            annotation=annotation,
+            value=value,
+            simple=isinstance(target, ast.Name),
+        )
+        assign_node.dtype, assign_node.shape = value.dtype, value.shape
+        return assign_node
+
     def visit_BinOp(self, node: ast.BinOp):
         # e.g., x + y, x - y, x * y, x / y, x // y, x % y,
         node.left = self.visit(node.left)
@@ -473,7 +514,6 @@ class ASTProcessor(ast.NodeTransformer):
         node_list = []
         for target, value in zip(targets, values):
             rhs = self.visit(value)
-            target_dtype, target_shape = None, None
             if isinstance(target, ast.Name):
                 target_ = self.get_symbol(target.id, allow_missing=True)
                 if target_ is None:
@@ -484,39 +524,11 @@ class ASTProcessor(ast.NodeTransformer):
                     assert not getattr(
                         target_.dtype, "constexpr", False
                     ), "Cannot reassign constants."
-                    target_dtype, target_shape = target_.dtype, target_.shape
+                    target.dtype, target.shape = target_.dtype, target_.shape
             else:
                 # e.g., A[i] = 1
-                lhs = self.visit(target)
-                target_dtype, target_shape = lhs.dtype, lhs.shape
-            if target_dtype is not None:
-                if hasattr(rhs, "dtype"):
-                    rhs = self.visit_cast(rhs, target_dtype)
-                rhs = self.visit_broadcast(rhs, target_dtype, target_shape)
-            target.dtype, target.shape = rhs.dtype, rhs.shape
-            annotation = ast.Subscript(
-                value=ast.Name(id="__allo__", ctx=ast.Load()),
-                slice=ast.Tuple(
-                    elts=[
-                        ast.Name(id=str(target.dtype), ctx=ast.Load()),
-                        ast.Tuple(
-                            elts=[ast.Constant(value=d) for d in target.shape],
-                            ctx=ast.Load(),
-                        ),
-                        ast.Name(id=str(getattr(target, "spec", None)), ctx=ast.Load()),
-                    ],
-                    ctx=ast.Load(),
-                ),
-                ctx=ast.Load(),
-            )
-            assign_node = ast.AnnAssign(
-                target=target,
-                annotation=annotation,
-                value=rhs,
-                simple=isinstance(target, ast.Name),
-            )
-            assign_node.dtype, assign_node.shape = rhs.dtype, rhs.shape
-            node_list.append(assign_node)
+                self.visit(target)
+            node_list.append(self.make_assignment(target, rhs))
         # replace with a list of AnnAssign for normalization
         return node_list
 
@@ -531,28 +543,7 @@ class ASTProcessor(ast.NodeTransformer):
                 n.ctx = ast.Load()
         value = self.visit_binary_op_operands(left, rhs, node.op)
         assert value.dtype == lhs.dtype, value.shape == lhs.shape
-        annotation = ast.Subscript(
-            value=ast.Name(id="__allo__", ctx=ast.Load()),
-            slice=ast.Tuple(
-                elts=[
-                    ast.Name(id=str(lhs.dtype), ctx=ast.Load()),
-                    ast.Tuple(
-                        elts=[ast.Constant(value=d) for d in lhs.shape],
-                        ctx=ast.Load(),
-                    ),
-                    ast.Name(id=str(getattr(lhs, "spec", None)), ctx=ast.Load()),
-                ],
-                ctx=ast.Load(),
-            ),
-            ctx=ast.Load(),
-        )
-        assign_node = ast.AnnAssign(
-            target=lhs,
-            annotation=annotation,
-            value=value,
-            simple=isinstance(lhs, ast.Name),
-        )
-        return assign_node
+        return self.make_assignment(lhs, value)
 
     def visit_AnnAssign(self, node: ast.AnnAssign):
         # e.g., C: float32[32, 32] = 0.0
@@ -695,7 +686,8 @@ class ASTProcessor(ast.NodeTransformer):
         raise NotImplementedError
 
     def visit_Call(self, node: ast.Call):
-        raise NotImplementedError
+        # FIXME
+        return node
 
     def visit_FunctionDef(self, node: ast.FunctionDef, instantiate: list = None):
         with self.block_scope_guard():

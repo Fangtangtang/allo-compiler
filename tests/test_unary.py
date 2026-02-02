@@ -72,6 +72,31 @@ def test_unary_not():
 
     s = process(kernel1)
 
+    def kernel2() -> UInt(8):
+        A: UInt(8) = 1 == 1
+        B: UInt(8) = not A == 1
+        return B
+
+    s = process(kernel2)
+
+    def kernel3() -> UInt(8):
+        A: UInt(8) = 1 == 1
+        B: UInt(8) = not True
+        return B
+
+    s = process(kernel3)
+
+    def kernel4() -> UInt(8):
+        A: UInt(8) = 1 == 1
+        B: UInt(8)
+        if not A:
+            B: UInt(8) = not False
+        else:
+            B: UInt(8) = not True
+        return B
+
+    s = process(kernel4)
+
 
 if __name__ == "__main__":
     test_unary()

@@ -235,6 +235,122 @@ def cpp_style_intrin_rule():
     return TypingRule([unaryrules])
 
 
+def cpp_style_comparison_rule():
+    # Similar to binary arithmetic rules, but the return type is always UInt(8)
+    # Reusing the logic structure but replacing the result type logic
+    int_rules = {
+        (Int, Int): lambda t1, t2: (
+            (UInt(8), Int(max(t1.bits, t2.bits)), Int(max(t1.bits, t2.bits)))
+            if all(t.bits in {8, 16, 32, 64} for t in (t1, t2))
+            else TypeError(f"{t1}, {t2} fail binary arithmetic rule")
+        ),
+        (Int, UInt): lambda t1, t2: (
+            (UInt(8), UInt(t2.bits), UInt(t2.bits))
+            if t2.bits >= t1.bits and all(t.bits in {8, 16, 32, 64} for t in (t1, t2))
+            else (
+                (UInt(8), Int(t1.bits), Int(t1.bits))
+                if all(t.bits in {8, 16, 32, 64} for t in (t1, t2))
+                else TypeError(f"{t1}, {t2} fail binary arithmetic rule")
+            )
+        ),
+        (Int, Index): lambda t1, t2: (
+            (UInt(8), Int(max(t1.bits, t2.bits)), Int(max(t1.bits, t2.bits)))
+            if t1.bits in {8, 16, 32, 64}
+            else TypeError(f"{t1}, {t2} fail binary arithmetic rule")
+        ),
+        (Int, Float): lambda t1, t2: (
+            (UInt(8), t2, t2)
+            if t1.bits in {8, 16, 32, 64}
+            else TypeError(f"{t1}, {t2} fail binary arithmetic rule")
+        ),
+        # python native value
+        (Int, int): lambda t1, v2: (UInt(8), t1, t1),
+        (int, Int): lambda v1, t2: (UInt(8), t2, t2),
+        (Int, float): lambda t1, v2: (UInt(8), Float(64), Float(64)),
+        (float, Int): lambda v1, t2: (UInt(8), Float(64), Float(64)),
+    }
+    uint_rules = {
+        (UInt, Int): lambda t1, t2: (
+            (UInt(8), UInt(t1.bits), UInt(t1.bits))
+            if t1.bits >= t2.bits and all(t.bits in {8, 16, 32, 64} for t in (t1, t2))
+            else (
+                (UInt(8), Int(t2.bits), Int(t2.bits))
+                if all(t.bits in {8, 16, 32, 64} for t in (t1, t2))
+                else TypeError(f"{t1}, {t2} fail binary arithmetic rule")
+            )
+        ),
+        (UInt, UInt): lambda t1, t2: (
+            (UInt(8), UInt(max(t1.bits, t2.bits)), UInt(max(t1.bits, t2.bits)))
+            if all(t.bits in {8, 16, 32, 64} for t in (t1, t2))
+            else TypeError(f"{t1}, {t2} fail binary arithmetic rule")
+        ),
+        (UInt, Index): lambda t1, t2: (
+            (UInt(8), UInt(t1.bits), UInt(t1.bits))
+            if t1.bits >= 32 and t1.bits in {8, 16, 32, 64}
+            else (
+                (UInt(8), Index(), Index())
+                if t1.bits in {8, 16, 32, 64}
+                else TypeError(f"{t1}, {t2} fail binary arithmetic rule")
+            )
+        ),
+        (UInt, Float): lambda t1, t2: (
+            (UInt(8), t2, t2)
+            if t1.bits in {8, 16, 32, 64}
+            else TypeError(f"{t1}, {t2} fail binary arithmetic rule")
+        ),
+        # python native value
+        (UInt, int): lambda t1, v2: (UInt(8), t1, t1),
+        (int, UInt): lambda v1, t2: (UInt(8), t2, t2),
+        (UInt, float): lambda t1, v2: (UInt(8), Float(64), Float(64)),
+        (float, UInt): lambda v1, t2: (UInt(8), Float(64), Float(64)),
+    }
+    index_rules = {
+        (Index, Int): lambda t1, t2: (
+            (UInt(8), Int(max(t1.bits, t2.bits)), Int(max(t1.bits, t2.bits)))
+            if t2.bits in {8, 16, 32, 64}
+            else TypeError(f"{t1}, {t2} fail binary arithmetic rule")
+        ),
+        (Index, UInt): lambda t1, t2: (
+            (UInt(8), UInt(t2.bits), UInt(t2.bits))
+            if t2.bits >= 32 and t2.bits in {8, 16, 32, 64}
+            else (
+                (UInt(8), Index(), Index())
+                if t2.bits in {8, 16, 32, 64}
+                else TypeError(f"{t1}, {t2} fail binary arithmetic rule")
+            )
+        ),
+        (Index, Index): lambda t1, t2: (UInt(8), t1, t2),
+        (Index, Float): lambda t1, t2: (UInt(8), t2, t2),
+        # python native value
+        (Index, int): lambda t1, v2: (UInt(8), t1, t1),
+        (int, Index): lambda v1, t2: (UInt(8), t2, t2),
+    }
+    float_rules = {
+        (Float, Int): lambda t1, t2: (
+            (UInt(8), t1, t1)
+            if t2.bits in {8, 16, 32, 64}
+            else TypeError(f"{t1}, {t2} fail binary arithmetic rule")
+        ),
+        (Float, UInt): lambda t1, t2: (
+            (UInt(8), t1, t1)
+            if t2.bits in {8, 16, 32, 64}
+            else TypeError(f"{t1}, {t2} fail binary arithmetic rule")
+        ),
+        (Float, Index): lambda t1, t2: (UInt(8), t1, t1),
+        (Float, Float): lambda t1, t2: (
+            (UInt(8), t1, t1) if t1.bits >= t2.bits else (UInt(8), t2, t2)
+        ),
+        # python native value
+        (Float, int): lambda t1, v2: (UInt(8), t1, t1),
+        (int, Float): lambda v1, t2: (UInt(8), t2, t2),
+        (Float, float): lambda t1, v2: (UInt(8), t1, t1),
+        (float, Float): lambda v1, t2: (UInt(8), t2, t2),
+    }
+    return TypingRule(
+        [int_rules, uint_rules, index_rules, float_rules],
+    )
+
+
 cpp_style_registry = {
     ast.Add: cpp_style_binary_arith_rule(),
     ast.Sub: cpp_style_binary_arith_rule(),
@@ -242,12 +358,12 @@ cpp_style_registry = {
     ast.Div: cpp_style_binary_arith_rule(),
     ast.FloorDiv: cpp_style_binary_arith_rule(),
     ast.Mod: cpp_style_binary_arith_rule(),
-    ast.Eq: cpp_style_binary_arith_rule(),
-    ast.NotEq: cpp_style_binary_arith_rule(),
-    ast.Lt: cpp_style_binary_arith_rule(),
-    ast.LtE: cpp_style_binary_arith_rule(),
-    ast.Gt: cpp_style_binary_arith_rule(),
-    ast.GtE: cpp_style_binary_arith_rule(),
+    ast.Eq: cpp_style_comparison_rule(),
+    ast.NotEq: cpp_style_comparison_rule(),
+    ast.Lt: cpp_style_comparison_rule(),
+    ast.LtE: cpp_style_comparison_rule(),
+    ast.Gt: cpp_style_comparison_rule(),
+    ast.GtE: cpp_style_comparison_rule(),
     ast.USub: cpp_style_intrin_rule(),
     ast.UAdd: cpp_style_intrin_rule(),
     ast.Invert: cpp_style_intrin_rule(),

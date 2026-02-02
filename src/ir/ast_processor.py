@@ -332,8 +332,18 @@ class ASTProcessor(ast.NodeTransformer):
         return node
 
     def visit_UnaryOp(self, node: ast.UnaryOp):
-        # e.g., -x, ~x, not x
-        raise NotImplementedError
+        # e.g., +x, -x, not x
+        node.operand = self.visit(node.operand)
+        if isinstance(node.op, ast.UAdd):
+            # +x -> x
+            return node.operand
+        if isinstance(node.op, ast.USub):
+            # -x -> 0 - x
+            raise NotImplementedError
+        if isinstance(node.op, ast.Not):
+            # not x
+            raise NotImplementedError
+        raise TypeError(f"Unsupported unary operator: {type(node.op).__name__}")
 
     def resolve_broadcast_shape(self, shape_a, shape_b):
         """
@@ -367,6 +377,42 @@ class ASTProcessor(ast.NodeTransformer):
                 )
         return tuple(res_shape)
 
+    def visit_binary_op_operands(
+        self, left: ast.expr, right: ast.expr, op: ast.operator
+    ):
+        arg1 = getattr(left, "dtype", getattr(left, "const_value", None))
+        arg2 = getattr(right, "dtype", getattr(right, "const_value", None))
+        try:
+            result_type, l_type, r_type = cpp_style_registry[type(op)](arg1, arg2)
+        except TypeError as e:
+            raise TypeError(f"Type error in binary operation ({op}): {e}")
+        left = self.visit_cast(left, l_type)
+        right = self.visit_cast(right, r_type)
+        # Broadcasting
+        lhs_shape = getattr(left, "shape", tuple())
+        rhs_shape = getattr(right, "shape", tuple())
+        if lhs_shape != rhs_shape:
+            try:
+                result_shape = self.resolve_broadcast_shape(lhs_shape, rhs_shape)
+            except ValueError as e:
+                raise ValueError(f"Broadcasting error in binary operation {op}: {e}")
+            left = self.visit_broadcast(left, left.dtype, result_shape)
+            right = self.visit_broadcast(right, right.dtype, result_shape)
+        else:
+            result_shape = lhs_shape
+
+        call_node = ast.Call(
+            func=ast.Attribute(
+                value=ast.Name(id="__allo__", ctx=ast.Load()),
+                attr=str(type(op).__name__),
+                ctx=ast.Load(),
+            ),
+            args=[left, right],
+            keywords=[],
+        )
+        call_node.dtype, call_node.shape = result_type, result_shape
+        return call_node
+
     def visit_BinOp(self, node: ast.BinOp):
         # e.g., x + y, x - y, x * y, x / y, x // y, x % y,
         node.left = self.visit(node.left)
@@ -376,40 +422,7 @@ class ASTProcessor(ast.NodeTransformer):
             new_node = ast.Constant(value=self.eval_constant(node))
             new_node.shape = tuple()
             return new_node
-        arg1 = getattr(node.left, "dtype", getattr(node.left, "const_value", None))
-        arg2 = getattr(node.right, "dtype", getattr(node.right, "const_value", None))
-        try:
-            result_type, l_type, r_type = cpp_style_registry[type(node.op)](arg1, arg2)
-        except TypeError as e:
-            raise TypeError(f"Type error in binary operation ({node.op}): {e}")
-        left = self.visit_cast(node.left, l_type)
-        right = self.visit_cast(node.right, r_type)
-        # Broadcasting
-        lhs_shape = getattr(left, "shape", tuple())
-        rhs_shape = getattr(right, "shape", tuple())
-        if lhs_shape != rhs_shape:
-            try:
-                result_shape = self.resolve_broadcast_shape(lhs_shape, rhs_shape)
-            except ValueError as e:
-                raise ValueError(
-                    f"Broadcasting error in binary operation {node.op}: {e}"
-                )
-            left = self.visit_broadcast(left, left.dtype, result_shape)
-            right = self.visit_broadcast(right, right.dtype, result_shape)
-        else:
-            result_shape = lhs_shape
-
-        call_node = ast.Call(
-            func=ast.Attribute(
-                value=ast.Name(id="__allo__", ctx=ast.Load()),
-                attr=str(type(node.op).__name__),
-                ctx=ast.Load(),
-            ),
-            args=[left, right],
-            keywords=[],
-        )
-        call_node.dtype, call_node.shape = result_type, result_shape
-        return call_node
+        return self.visit_binary_op_operands(node.left, node.right, node.op)
 
     def visit_BoolOp(self, node: ast.BoolOp):
         # e.g., x and y, x or y
@@ -423,7 +436,15 @@ class ASTProcessor(ast.NodeTransformer):
 
     def visit_Compare(self, node: ast.Compare):
         # e.g., x < y, x <= y, x > y, x >= y, x == y, x != y
-        raise NotImplementedError
+        assert len(node.comparators) == 1, "Only support one comparator for now"
+        left = self.visit(node.left)
+        right = self.visit(node.comparators[0])
+        # costant folding
+        if isinstance(left, ast.Constant) and isinstance(right, ast.Constant):
+            new_node = ast.Constant(value=self.eval_constant(node))
+            new_node.shape = tuple()
+            return new_node
+        return self.visit_binary_op_operands(left, right, node.ops[0])
 
     def visit_Assign(self, node: ast.Assign):
         # e.g., A[i] = 1

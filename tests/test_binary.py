@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from src.main import process
-from allo.ir.types import int32, Int, ConstExpr
+from allo.ir.types import int32, Int, ConstExpr, UInt
 
 
 def test_arith():
@@ -91,6 +91,68 @@ def test_broadcast():
     s = process(kernel3)
 
 
+def test_compare():
+    def kernel1():
+        A: int32 = 0
+        B: int32 = 0
+        C: UInt(8) = A == B
+
+    s = process(kernel1)
+
+    def kernel2():
+        A: int32 = 0
+        B: int32 = 0
+        C: UInt(8) = A != B
+
+    s = process(kernel2)
+
+    def kernel3():
+        A: int32 = 0
+        B: int32 = 0
+        C: UInt(8) = A > B
+
+    s = process(kernel3)
+
+    def kernel4():
+        A: int32 = 0
+        B: int32 = 0
+        C: UInt(8) = A >= B
+
+    s = process(kernel4)
+
+    def kernel5():
+        A: int32 = 0
+        B: int32 = 0
+        C: UInt(8) = A < B
+
+    s = process(kernel5)
+
+    def kernel6():
+        A: int32 = 0
+        B: int32 = 0
+        C: UInt(8) = A <= B
+
+    s = process(kernel6)
+
+    def kernel7():
+        A: int32 = 0
+        B: UInt(8) = 0 <= A
+        C: UInt(8) = A > 0
+
+    s = process(kernel7)
+
+    def kernel8():
+        C: UInt(8) = 1 >= 0
+
+    s = process(kernel8)
+
+    def kernel9():
+        C: UInt(8) = 1 < 0
+
+    s = process(kernel9)
+
+
 if __name__ == "__main__":
     test_arith()
     test_broadcast()
+    test_compare()

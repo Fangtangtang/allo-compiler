@@ -87,6 +87,16 @@ class IRBuilder(ast.NodeVisitor):
     def put_var(self, name, val):
         self.scopes[-1].vars[name] = val
 
+    def get_symbol(self, name, allow_missing=False):
+        for scope in reversed(self.scopes):
+            if name in scope.vars:
+                return scope.vars[name]
+            if name in scope.consts:
+                return scope.consts[name]
+        if allow_missing:
+            return None
+        raise RuntimeError("unreachable")
+
     def build(self, ast_module: ast.FunctionDef):
         with self.ctx, Location.unknown():
             self.module = Module.create()
@@ -95,7 +105,14 @@ class IRBuilder(ast.NodeVisitor):
             self.pop_ip()
             return self.module
 
-    def build_type(self, annotation: ast.Subscript):
+    def build_type(self, annotation: ast.Subscript, force_memref: bool = False):
+        """
+        build type from annotation
+
+        Args:
+            annotation
+            force_memref: if True, return memref type
+        """
         assert (
             isinstance(annotation.slice, ast.Tuple) and len(annotation.slice.elts) == 3
         )  # by construction
@@ -105,7 +122,7 @@ class IRBuilder(ast.NodeVisitor):
         assert isinstance(dtype, ast.Name) and isinstance(shape, ast.Tuple)
         dtype = self.symbol_table.types[dtype.id]
         shape = [int(size.value) for size in shape.elts]
-        if len(shape) == 0:
+        if len(shape) == 0 and not force_memref:
             return dtype.build()
         return MemRefType.get(shape, dtype.build())
 
@@ -113,6 +130,7 @@ class IRBuilder(ast.NodeVisitor):
         raise NotImplementedError
 
     def visit_Constant(self, node: ast.Constant):
+
         raise NotImplementedError
 
     def visit_Tuple(self, node: ast.Tuple):
@@ -128,6 +146,18 @@ class IRBuilder(ast.NodeVisitor):
         raise NotImplementedError
 
     def visit_AnnAssign(self, node: ast.AnnAssign):
+        value = None if node.value is None else self.visit(node.value)
+        if isinstance(node.target, ast.Name):
+            target = self.get_symbol(name=node.target.id, allow_missing=True)
+            if target is None:
+                # declare new variable
+                memref_type = self.build_type(node.annotation, force_memref=True)
+                alloc_op = memref_d.AllocOp(memref_type, [], [], ip=self.get_ip())
+                alloc_op.attributes["name"] = StringAttr.get(node.target.id)
+                self.put_var(node.target.id, val=alloc_op)
+                target = alloc_op
+            if value is None:
+                return
         raise NotImplementedError
 
     def visit_For(self, node: ast.For):
@@ -143,6 +173,9 @@ class IRBuilder(ast.NodeVisitor):
         raise NotImplementedError
 
     def visit_Return(self, node: ast.Return):
+        if node.value is None:
+            func_d.ReturnOp([], ip=self.get_ip())
+            return
         raise NotImplementedError
 
     def visit_With(self, node: ast.With):

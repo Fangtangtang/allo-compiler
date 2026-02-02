@@ -19,7 +19,8 @@ def process(fn: Union[Callable, str], instantiate: list = None):
     # process the top function
     node = ast_processor.process(fn, instantiate=instantiate)
     print(ast.unparse(node))
-    builder = IRBuilder(symbol_table)
-    module = builder.build(node)
+    # builder = IRBuilder(symbol_table)
+    # module = builder.build(node)
+    # print(module)
     # name = fn.__name__
     # return LLVMModule()

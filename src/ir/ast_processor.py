@@ -230,8 +230,6 @@ class ASTProcessor(ast.NodeTransformer):
         """
         Broadcast an expression to a specific shape. Return the broadcasted expression if broadcast is needed, otherwise return the original expression.
         """
-        if not hasattr(node, "dtype"):
-            node.dtype = dtype
         shape = getattr(node, "shape", None)
         assert shape is not None and len(shape) <= len(target_shape)
         if shape == target_shape:
@@ -267,7 +265,23 @@ class ASTProcessor(ast.NodeTransformer):
 
     def visit_cast(self, node: ast.AST, target_dtype: AlloType) -> ast.AST:
         if not hasattr(node, "dtype"):
-            node.dtype = target_dtype
+            # constant should be 'typed', replace the node with builtin constant construction function call
+            shape = node.shape
+            node = ast.Call(
+                func=ast.Attribute(
+                    value=ast.Name(id="__allo__", ctx=ast.Load()),
+                    attr="constant",
+                    ctx=ast.Load(),
+                ),
+                args=[
+                    node,
+                    self.get_ast_annotaiton(
+                        target_dtype, shape, getattr(node, "spec", None)
+                    ),
+                ],
+                keywords=[],
+            )
+            node.dtype, node.shape = target_dtype, shape
         if node.dtype == target_dtype:
             return node
         # TODO: add checking here to make sure the cast is valid
@@ -449,8 +463,7 @@ class ASTProcessor(ast.NodeTransformer):
         target_dtype = getattr(target, "dtype", None)
         target_shape = getattr(target, "shape", None)
         if target_dtype is not None:
-            if hasattr(value, "dtype"):
-                value = self.visit_cast(value, target_dtype)
+            value = self.visit_cast(value, target_dtype)
             value = self.visit_broadcast(value, target_dtype, target_shape)
 
         target.dtype, target.shape = value.dtype, value.shape
@@ -583,8 +596,7 @@ class ASTProcessor(ast.NodeTransformer):
         else:
             if node.value is not None:
                 value = self.visit(node.value)
-                if hasattr(value, "dtype"):
-                    value = self.visit_cast(value, dtype)
+                value = self.visit_cast(value, dtype)
                 node.value = self.visit_broadcast(value, dtype, shape)
             self.put_var(node.target.id, node.target)
         node.target.dtype = node.dtype = dtype
@@ -672,10 +684,7 @@ class ASTProcessor(ast.NodeTransformer):
     def visit_Return(self, node: ast.Return):
         node.value = self.visit(node.value)
         func_node = self.symbol_table.functions[self.current_func[-1]]
-        if hasattr(node.value, "dtype"):
-            node.value = self.visit_cast(node.value, func_node.dtype)
-        else:
-            node.value.dtype = func_node.dtype
+        node.value = self.visit_cast(node.value, func_node.dtype)
         node.value = self.visit_broadcast(node.value, func_node.dtype, func_node.shape)
         return node
 

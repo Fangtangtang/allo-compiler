@@ -338,9 +338,11 @@ class ASTProcessor(ast.NodeTransformer):
             return node.operand
         if isinstance(node.op, ast.USub):
             # -x -> 0 - x
+            # FIXME
             raise NotImplementedError
         if isinstance(node.op, ast.Not):
             # not x
+            # FIXME
             raise NotImplementedError
         raise TypeError(f"Unsupported unary operator: {type(node.op).__name__}")
 
@@ -438,8 +440,6 @@ class ASTProcessor(ast.NodeTransformer):
                 val.dtype, val.shape = typing_result[i + 1], tuple()
         except TypeError as e:
             raise TypeError(f"Type error in bool operation ({node.op}): {e}")
-        except KeyError:
-            raise NotImplementedError(f"Bool op {type(node.op)} not supported")
         node.dtype, node.shape = res_type, tuple()
         return node
 
@@ -525,8 +525,34 @@ class ASTProcessor(ast.NodeTransformer):
         rhs = self.visit(node.value)
         lhs = self.visit(node.target)
         assert not getattr(lhs.dtype, "constexpr", False), "Cannot reassign constants."
-        # TODO: replace with binary op + AnnAssign
-        raise NotImplementedError
+        left = copy.deepcopy(lhs)
+        for n in ast.walk(left):
+            if isinstance(n, (ast.Name, ast.Attribute, ast.Subscript)):
+                n.ctx = ast.Load()
+        value = self.visit_binary_op_operands(left, rhs, node.op)
+        assert value.dtype == lhs.dtype, value.shape == lhs.shape
+        annotation = ast.Subscript(
+            value=ast.Name(id="__allo__", ctx=ast.Load()),
+            slice=ast.Tuple(
+                elts=[
+                    ast.Name(id=str(lhs.dtype), ctx=ast.Load()),
+                    ast.Tuple(
+                        elts=[ast.Constant(value=d) for d in lhs.shape],
+                        ctx=ast.Load(),
+                    ),
+                    ast.Name(id=str(getattr(lhs, "spec", None)), ctx=ast.Load()),
+                ],
+                ctx=ast.Load(),
+            ),
+            ctx=ast.Load(),
+        )
+        assign_node = ast.AnnAssign(
+            target=lhs,
+            annotation=annotation,
+            value=value,
+            simple=isinstance(lhs, ast.Name),
+        )
+        return assign_node
 
     def visit_AnnAssign(self, node: ast.AnnAssign):
         # e.g., C: float32[32, 32] = 0.0
@@ -655,14 +681,13 @@ class ASTProcessor(ast.NodeTransformer):
         raise NotImplementedError
 
     def visit_Return(self, node: ast.Return):
-        res = self.visit(node.value)
+        node.value = self.visit(node.value)
         func_node = self.symbol_table.functions[self.current_func[-1]]
-        # TODO: support casting and broadcasting
-        if hasattr(res, "dtype"):
-            assert res.dtype == func_node.dtype
+        if hasattr(node.value, "dtype"):
+            node.value = self.visit_cast(node.value, func_node.dtype)
         else:
-            res.dtype = func_node.dtype
-        assert res.shape == func_node.shape
+            node.value.dtype = func_node.dtype
+        node.value = self.visit_broadcast(node.value, func_node.dtype, func_node.shape)
         return node
 
     def visit_With(self, node: ast.With):

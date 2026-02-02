@@ -108,6 +108,44 @@ def test_augassign():
 
     s = process(kernel1)
 
+    def kernel2() -> int32:
+        A: int32[2] = 0
+        B: int32 = 0
+        A[0] += B
+        return A[0]
+
+    s = process(kernel2)
+
+    def kernel3() -> int32:
+        A: int32 = 0
+        B: int32 = 0
+        A -= B
+        return A
+
+    s = process(kernel3)
+
+    def kernel4() -> int32:
+        A: int32 = 0
+        B: int32 = 0
+        A *= B
+        return A
+
+    s = process(kernel4)
+
+    def kernel5() -> int32:
+        A: int32[2] = 0
+        A[0] -= 1
+        return A[0]
+
+    s = process(kernel5)
+
+    def kernel6() -> int32:
+        A: int32[2, 2] = 0
+        A[0] -= 1
+        return A[0, 0]
+
+    s = process(kernel6)
+
 
 def test_broadcast_init():
     def kernel1() -> int32[2]:
@@ -140,7 +178,7 @@ def test_broadcast_init():
 
 
 if __name__ == "__main__":
-    test_annassign()
-    test_assign()
-    # test_augassign()
-    test_broadcast_init()
+    # test_annassign()
+    # test_assign()
+    test_augassign()
+    # test_broadcast_init()

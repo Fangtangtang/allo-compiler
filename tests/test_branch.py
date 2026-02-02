@@ -47,7 +47,7 @@ def test_branch_complicate():
     def kernel1() -> int32:
         A: int32 = 0
         B: int32 = 0
-        if A > B and False or B == 1:
+        if A > B and 1 == 1:
             B = A
         if True:
             B = 1
@@ -83,5 +83,5 @@ def test_branch_complicate():
 
 
 if __name__ == "__main__":
-    # test_branch()
+    test_branch()
     test_branch_complicate()

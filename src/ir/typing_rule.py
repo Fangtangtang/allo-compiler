@@ -349,22 +349,42 @@ def cpp_style_comparison_rule():
     )
 
 
-cpp_style_registry = {
-    ast.Add: cpp_style_binary_arith_rule(),
-    ast.Sub: cpp_style_binary_arith_rule(),
-    ast.Mult: cpp_style_binary_arith_rule(),
-    ast.Div: cpp_style_binary_arith_rule(),
-    ast.FloorDiv: cpp_style_binary_arith_rule(),
-    ast.Mod: cpp_style_binary_arith_rule(),
-    ast.Eq: cpp_style_comparison_rule(),
-    ast.NotEq: cpp_style_comparison_rule(),
-    ast.Lt: cpp_style_comparison_rule(),
-    ast.LtE: cpp_style_comparison_rule(),
-    ast.Gt: cpp_style_comparison_rule(),
-    ast.GtE: cpp_style_comparison_rule(),
-    ast.USub: cpp_style_intrin_rule(),
-    ast.UAdd: cpp_style_intrin_rule(),
-    ast.Invert: cpp_style_intrin_rule(),
-}
+def cpp_style_bool_op_rule():
+    cpp_style_bool = UInt(8)
 
-cpp_style_bool = UInt(8)
+    def rule(*args):
+        # Check if any operand is unsupported
+        for t in args:
+            print(t)
+            if isinstance(t, bool) or t == cpp_style_bool:
+                continue
+            raise TypeError(f"Type {t} not supported in boolean operation")
+        return tuple([cpp_style_bool] * (len(args) + 1))
+
+    return rule
+
+
+CPP_STYLE_BINARY_ARITH_RULE = cpp_style_binary_arith_rule()
+CPP_STYLE_COMPARISON_RULE = cpp_style_comparison_rule()
+CPP_STYLE_INTRIN_RULE = cpp_style_intrin_rule()
+CPP_STYLE_BOOL_OP_RULE = cpp_style_bool_op_rule()
+
+cpp_style_registry = {
+    ast.Add: CPP_STYLE_BINARY_ARITH_RULE,
+    ast.Sub: CPP_STYLE_BINARY_ARITH_RULE,
+    ast.Mult: CPP_STYLE_BINARY_ARITH_RULE,
+    ast.Div: CPP_STYLE_BINARY_ARITH_RULE,
+    ast.FloorDiv: CPP_STYLE_BINARY_ARITH_RULE,
+    ast.Mod: CPP_STYLE_BINARY_ARITH_RULE,
+    ast.Eq: CPP_STYLE_COMPARISON_RULE,
+    ast.NotEq: CPP_STYLE_COMPARISON_RULE,
+    ast.Lt: CPP_STYLE_COMPARISON_RULE,
+    ast.LtE: CPP_STYLE_COMPARISON_RULE,
+    ast.Gt: CPP_STYLE_COMPARISON_RULE,
+    ast.GtE: CPP_STYLE_COMPARISON_RULE,
+    ast.USub: CPP_STYLE_INTRIN_RULE,
+    ast.UAdd: CPP_STYLE_INTRIN_RULE,
+    ast.Invert: CPP_STYLE_INTRIN_RULE,
+    ast.And: CPP_STYLE_BOOL_OP_RULE,
+    ast.Or: CPP_STYLE_BOOL_OP_RULE,
+}

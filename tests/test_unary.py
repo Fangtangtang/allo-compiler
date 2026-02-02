@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from src.main import process
-from allo.ir.types import int32, Int, ConstExpr, Uint
+from allo.ir.types import int32, Int, ConstExpr, UInt
 
 
 def test_unary():
@@ -65,9 +65,9 @@ def test_unary():
 
 
 def test_unary_not():
-    def kernel1() -> Uint(8):
-        A: Uint(8) = 1 == 1
-        B: Uint(8) = not A
+    def kernel1() -> UInt(8):
+        A: UInt(8) = 1 == 1
+        B: UInt(8) = not A
         return B
 
     s = process(kernel1)

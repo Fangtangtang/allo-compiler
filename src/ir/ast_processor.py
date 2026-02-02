@@ -6,7 +6,7 @@ from typing import Union
 from collections.abc import Callable
 import ast
 from .utils import parse_ast, SymbolTable, Scope
-from .typing_rule import cpp_style_registry, cpp_style_bool
+from .typing_rule import cpp_style_registry
 from allo.ir.types import AlloType, Struct, Stream, Stateful, ConstExpr, Index
 from allo.memory import Layout
 
@@ -276,7 +276,6 @@ class ASTProcessor(ast.NodeTransformer):
 
     def visit_Constant(self, node: ast.Constant):
         # e.g., 1, 1.0, True, False
-        node.const_value = self.eval_constant(node)
         node.shape = tuple()  # dtype unknown
         return node
 
@@ -380,8 +379,8 @@ class ASTProcessor(ast.NodeTransformer):
     def visit_binary_op_operands(
         self, left: ast.expr, right: ast.expr, op: ast.operator
     ):
-        arg1 = getattr(left, "dtype", getattr(left, "const_value", None))
-        arg2 = getattr(right, "dtype", getattr(right, "const_value", None))
+        arg1 = getattr(left, "dtype", getattr(left, "value", None))
+        arg2 = getattr(right, "dtype", getattr(right, "value", None))
         try:
             result_type, l_type, r_type = cpp_style_registry[type(op)](arg1, arg2)
         except TypeError as e:
@@ -426,16 +425,22 @@ class ASTProcessor(ast.NodeTransformer):
 
     def visit_BoolOp(self, node: ast.BoolOp):
         # e.g., x and y, x or y
-        # TODO: test this!
-        print(ast.dump(node))
-        for idx, value in enumerate(node.values):
-            value = self.visit(value)
-            assert (
-                value.dtype == cpp_style_bool
-                and len(getattr(value, "shape", tuple())) == 0
-            )
-            node.values[idx] = value
-        node.dtype, node.shape = cpp_style_bool, tuple()
+        arg_dtypes = []
+        for value in node.values:
+            val = self.visit(value)
+            arg_dtype = getattr(val, "dtype", getattr(val, "value", None))
+            arg_dtypes.append(arg_dtype)
+
+        try:
+            typing_result = cpp_style_registry[type(node.op)](*arg_dtypes)
+            res_type = typing_result[0]
+            for i, val in enumerate(node.values):
+                val.dtype, val.shape = typing_result[i + 1], tuple()
+        except TypeError as e:
+            raise TypeError(f"Type error in bool operation ({node.op}): {e}")
+        except KeyError:
+            raise NotImplementedError(f"Bool op {type(node.op)} not supported")
+        node.dtype, node.shape = res_type, tuple()
         return node
 
     def visit_Compare(self, node: ast.Compare):

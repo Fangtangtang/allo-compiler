@@ -6,6 +6,8 @@ from typing import Union
 from collections.abc import Callable
 from .ir.utils import SymbolTable, get_global_vars
 from .ir.ast_processor import ASTProcessor
+from .ir.ir_builder import IRBuilder
+from allo.backend.llvm import LLVMModule
 
 
 def process(fn: Union[Callable, str], instantiate: list = None):
@@ -17,3 +19,8 @@ def process(fn: Union[Callable, str], instantiate: list = None):
     # process the top function
     node = ast_processor.process(fn, instantiate=instantiate)
     print(ast.unparse(node))
+    builder = IRBuilder(symbol_table)
+    module = builder.build(node)
+    name = fn.__name__
+
+    # return LLVMModule()

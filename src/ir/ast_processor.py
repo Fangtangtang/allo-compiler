@@ -36,6 +36,17 @@ class ASTProcessor(ast.NodeTransformer):
         self.scopes: list[Scope] = []
         self.current_func: list[str] = []
 
+    def visit(self, node):
+        """
+        Visit a node.
+
+        [NOTE]: avoid missing any case
+        """
+        method = "visit_" + node.__class__.__name__
+        visitor = getattr(self, method, None)
+        assert visitor is not None
+        return visitor(node)
+
     def block_scope_guard(self):
         return BlockScopeGuard(self.scopes)
 

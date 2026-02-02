@@ -201,6 +201,29 @@ class ASTProcessor(ast.NodeTransformer):
             return dtype, shape, refinement_type
         raise NotImplementedError
 
+    def get_ast_annotaiton(
+        self, dtype: AlloType, shape: tuple[int], spec
+    ) -> ast.Subscript:
+        # TODO: may collect spec in the same way
+        dtype_name = str(dtype)
+        if dtype_name not in self.symbol_table.types:
+            self.symbol_table.types[dtype_name] = dtype
+        return ast.Subscript(
+            value=ast.Name(id="__allo__", ctx=ast.Load()),
+            slice=ast.Tuple(
+                elts=[
+                    ast.Name(id=dtype_name, ctx=ast.Load()),
+                    ast.Tuple(
+                        elts=[ast.Constant(value=d) for d in shape],
+                        ctx=ast.Load(),
+                    ),
+                    ast.Name(id=str(spec), ctx=ast.Load()),
+                ],
+                ctx=ast.Load(),
+            ),
+            ctx=ast.Load(),
+        )
+
     def visit_broadcast(
         self, node: ast.AST, dtype: AlloType, target_shape: tuple[int]
     ) -> ast.AST:
@@ -431,20 +454,8 @@ class ASTProcessor(ast.NodeTransformer):
             value = self.visit_broadcast(value, target_dtype, target_shape)
 
         target.dtype, target.shape = value.dtype, value.shape
-        annotation = ast.Subscript(
-            value=ast.Name(id="__allo__", ctx=ast.Load()),
-            slice=ast.Tuple(
-                elts=[
-                    ast.Name(id=str(target.dtype), ctx=ast.Load()),
-                    ast.Tuple(
-                        elts=[ast.Constant(value=d) for d in target.shape],
-                        ctx=ast.Load(),
-                    ),
-                    ast.Name(id=str(getattr(target, "spec", None)), ctx=ast.Load()),
-                ],
-                ctx=ast.Load(),
-            ),
-            ctx=ast.Load(),
+        annotation = self.get_ast_annotaiton(
+            target.dtype, target.shape, getattr(target, "spec", None)
         )
         assign_node = ast.AnnAssign(
             target=target,
@@ -579,20 +590,7 @@ class ASTProcessor(ast.NodeTransformer):
         node.target.dtype = node.dtype = dtype
         node.target.shape = node.shape = shape
         node.target.spec = node.spec = spec
-        node.annotation = ast.Subscript(
-            value=ast.Name(id="__allo__", ctx=ast.Load()),
-            slice=ast.Tuple(
-                elts=[
-                    ast.Name(id=str(dtype), ctx=ast.Load()),
-                    ast.Tuple(
-                        elts=[ast.Constant(value=d) for d in shape], ctx=ast.Load()
-                    ),
-                    ast.Name(id=str(spec), ctx=ast.Load()),
-                ],
-                ctx=ast.Load(),
-            ),
-            ctx=ast.Load(),
-        )
+        node.annotation = self.get_ast_annotaiton(dtype, shape, spec)
         return node
 
     def visit_Expr(self, node: ast.Expr):
@@ -707,6 +705,7 @@ class ASTProcessor(ast.NodeTransformer):
                 arg.dtype, arg.shape, arg.spec = self.visit_type_annotation(
                     arg.annotation
                 )
+                arg.annotation = self.get_ast_annotaiton(arg.dtype, arg.shape, arg.spec)
                 assert not getattr(
                     arg.dtype, "stateful", False
                 ), f"Function parameter '{arg.arg}' cannot be Stateful."
@@ -716,25 +715,29 @@ class ASTProcessor(ast.NodeTransformer):
                 )
                 self.put_var(name=arg.arg, val=arg)
             # return type
-            if not (
-                (isinstance(node.returns, ast.Constant) and node.returns.value is None)
-                or node.returns is None
-            ):
+            if node.returns is not None:
                 if isinstance(node.returns, ast.Tuple):
                     # Multiple return values
                     node.returns.shape = []
                     node.returns.dtype = []
                     node.returns.spec = []
+                    new_elts = []
                     for elt in node.returns.elts:
                         elt.dtype, elt.shape, elt.spec = self.visit_type_annotation(elt)
                         node.returns.dtype.append(elt.dtype)
                         node.returns.shape.append(elt.shape)
                         node.returns.spec.append(elt.spec)
+                        new_elts.append(
+                            self.get_ast_annotaiton(elt.dtype, elt.shape, elt.spec)
+                        )
+                    node.returns.elts = new_elts
                 else:
                     # Single return value
-                    node.returns.dtype, node.returns.shape, node.returns.spec = (
-                        self.visit_type_annotation(node.returns)
-                    )
+                    dtype, shape, spec = self.visit_type_annotation(node.returns)
+                    node.returns = self.get_ast_annotaiton(dtype, shape, spec)
+                    node.returns.dtype = dtype
+                    node.returns.shape = shape
+                    node.returns.spec = spec
                 node.dtype, node.shape = node.returns.dtype, node.returns.shape
             # function body
             self.symbol_table.functions[func_name] = node

@@ -39,7 +39,10 @@ class SymbolTable:
         self.functions = (
             {}
         )  # function name -> function instance (instantiated from templates) node
-        self.variables = {}  # variable name -> variable node
+        self.variables = (
+            {}
+        )  # variable name -> variable node TODO: possibly useful if we have forward referenced global variable
+        self.types = {}  # str(dtype) -> AlloType
         # ----- tools -----
         self.symbol_mangler = {}  # template name -> instance args -> instance name
 

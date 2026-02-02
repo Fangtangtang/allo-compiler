@@ -3,7 +3,7 @@
 
 
 from src.main import process
-from allo.ir.types import int32, Int
+from allo.ir.types import int32, Int, Stateful
 
 
 def test_type():

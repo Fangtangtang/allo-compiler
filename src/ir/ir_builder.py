@@ -84,6 +84,9 @@ class IRBuilder(ast.NodeVisitor):
     def pop_ip(self):
         return self.ip_stack.pop()
 
+    def put_var(self, name, val):
+        self.scopes[-1].vars[name] = val
+
     def build(self, ast_module: ast.FunctionDef):
         with self.ctx, Location.unknown():
             self.module = Module.create()
@@ -92,7 +95,17 @@ class IRBuilder(ast.NodeVisitor):
             self.pop_ip()
             return self.module
 
-    def build_type(self, dtype: AlloType, shape: list[int]):
+    def build_type(self, annotation: ast.Subscript):
+        # FIXME: parse from ast node (annotation)
+        assert (
+            isinstance(annotation.slice, ast.Tuple) and len(annotation.slice.elts) == 3
+        )  # by construction
+        dtype = annotation.slice.elts[0]
+        shape = annotation.slice.elts[1]
+        spec = annotation.slice.elts[2]
+        assert isinstance(dtype, ast.Name) and isinstance(shape, ast.Tuple)
+        dtype = self.symbol_table.types[dtype.id]
+        shape = [int(size.value) for size in shape.elts]
         if len(shape) == 0:
             return dtype.build()
         return MemRefType.get(shape, dtype.build())
@@ -137,7 +150,7 @@ class IRBuilder(ast.NodeVisitor):
         raise NotImplementedError
 
     def visit_FunctionDef(self, node):
-        input_types = [self.build_type(arg.dtype, arg.shape) for arg in node.args.args]
+        input_types = [self.build_type(arg.annotation) for arg in node.args.args]
         if node.returns is None:
             output_types = []
         else:
@@ -146,7 +159,7 @@ class IRBuilder(ast.NodeVisitor):
                 if isinstance(node.returns, ast.Tuple)
                 else [node.returns]
             )
-            output_types = [self.build_type(ret.dtype, ret.shape) for ret in rets]
+            output_types = [self.build_type(ret) for ret in rets]
         # Build function
         func_type = FunctionType.get(input_types, output_types)
         func_op = func_d.FuncOp(name=node.name, type=func_type, ip=self.get_ip())
@@ -155,7 +168,7 @@ class IRBuilder(ast.NodeVisitor):
             # function arguments
             for i, (ast_arg, arg) in enumerate(zip(node.args.args, func_op.arguments)):
                 mock_arg = MockArg(arg, idx=i)
-                self.put_symbol(name=ast_arg.arg, val=mock_arg)
+                self.put_var(name=ast_arg.arg, val=mock_arg)
             self.set_ip(func_op.entry_block)
             for stmt in node.body:
                 self.visit(stmt)

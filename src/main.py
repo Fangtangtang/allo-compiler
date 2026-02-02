@@ -21,6 +21,5 @@ def process(fn: Union[Callable, str], instantiate: list = None):
     print(ast.unparse(node))
     builder = IRBuilder(symbol_table)
     module = builder.build(node)
-    name = fn.__name__
-
+    # name = fn.__name__
     # return LLVMModule()

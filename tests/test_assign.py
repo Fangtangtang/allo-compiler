@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from src.main import process
-from allo.ir.types import int32, Int, ConstExpr
+from allo.ir.types import int32, Int, ConstExpr, Fixed
 
 
 def test_annassign():
@@ -12,15 +12,16 @@ def test_annassign():
     zero = 0
     one = 1 + zero
 
-    def kernel1() -> int32:
+    def kernel1() -> (Int(32), Int(32)):
         """
         Initialize variables with constants.
         """
+        a: Fixed(8, 3)
         A: int32 = 0
         B: int32 = zero
         C: ConstExpr[int32] = one
         D: ConstExpr[int32] = C + 2
-        return B
+        # return B, B
 
     """
     Parsed:

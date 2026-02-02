@@ -126,5 +126,16 @@ def get_global_vars(func):
 
 class Scope:
     def __init__(self):
-        self.consts: dict[str, ast.Constant] = {}
+        self.consts = {}
         self.vars = {}
+
+
+class BlockScopeGuard:
+    def __init__(self, scopes: list[Scope]):
+        self.scopes: list[Scope] = scopes
+
+    def __enter__(self):
+        self.scopes.append(Scope())
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.scopes.pop()

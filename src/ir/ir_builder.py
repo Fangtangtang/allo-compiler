@@ -43,13 +43,16 @@ from allo._mlir.ir import (
     StridedLayoutAttr,
 )
 from allo.utils import register_dialect
-from .utils import SymbolTable
+from allo.ir.types import AlloType
+from allo.ir.utils import MockArg, MockScalar, MockConstant, MockBuffer
+from .utils import SymbolTable, BlockScopeGuard, Scope
 
 
 class IRBuilder(ast.NodeVisitor):
     def __init__(self, symbol_table: SymbolTable):
         super().__init__()
         self.symbol_table: SymbolTable = symbol_table
+        self.scopes: list[Scope] = []
         self.ctx: Context = Context()
         register_dialect(self.ctx)
         self.module: Module = None
@@ -67,6 +70,9 @@ class IRBuilder(ast.NodeVisitor):
         assert visitor is not None
         return visitor(node)
 
+    def block_scope_guard(self):
+        return BlockScopeGuard(self.scopes)
+
     def set_ip(self, ip):
         if not isinstance(ip, InsertionPoint):
             ip = InsertionPoint(ip)
@@ -81,8 +87,15 @@ class IRBuilder(ast.NodeVisitor):
     def build(self, ast_module: ast.FunctionDef):
         with self.ctx, Location.unknown():
             self.module = Module.create()
-        self.visit(ast_module)
-        return self.module
+            self.set_ip(self.module.body)
+            self.visit(ast_module)
+            self.pop_ip()
+            return self.module
+
+    def build_type(self, dtype: AlloType, shape: list[int]):
+        if len(shape) == 0:
+            return dtype.build()
+        return MemRefType.get(shape, dtype.build())
 
     def visit_Name(self, node):
         raise NotImplementedError
@@ -124,4 +137,26 @@ class IRBuilder(ast.NodeVisitor):
         raise NotImplementedError
 
     def visit_FunctionDef(self, node):
-        raise NotImplementedError
+        input_types = [self.build_type(arg.dtype, arg.shape) for arg in node.args.args]
+        if node.returns is None:
+            output_types = []
+        else:
+            rets = (
+                node.returns.elts
+                if isinstance(node.returns, ast.Tuple)
+                else [node.returns]
+            )
+            output_types = [self.build_type(ret.dtype, ret.shape) for ret in rets]
+        # Build function
+        func_type = FunctionType.get(input_types, output_types)
+        func_op = func_d.FuncOp(name=node.name, type=func_type, ip=self.get_ip())
+        func_op.add_entry_block()
+        with self.block_scope_guard():
+            # function arguments
+            for i, (ast_arg, arg) in enumerate(zip(node.args.args, func_op.arguments)):
+                mock_arg = MockArg(arg, idx=i)
+                self.put_symbol(name=ast_arg.arg, val=mock_arg)
+            self.set_ip(func_op.entry_block)
+            for stmt in node.body:
+                self.visit(stmt)
+            self.pop_ip()

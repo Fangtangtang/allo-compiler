@@ -5,21 +5,10 @@ import copy
 from typing import Union
 from collections.abc import Callable
 import ast
-from .utils import parse_ast, SymbolTable, Scope
+from .utils import parse_ast, SymbolTable, BlockScopeGuard, Scope
 from .typing_rule import cpp_style_registry
 from allo.ir.types import AlloType, Struct, Stream, Stateful, ConstExpr, Index
 from allo.memory import Layout
-
-
-class BlockScopeGuard:
-    def __init__(self, scopes: list[Scope]):
-        self.scopes: list[Scope] = scopes
-
-    def __enter__(self):
-        self.scopes.append(Scope())
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.scopes.pop()
 
 
 class ASTProcessor(ast.NodeTransformer):
@@ -757,6 +746,8 @@ class ASTProcessor(ast.NodeTransformer):
                     new_body.extend(res)
                 elif res is not None:
                     new_body.append(res)
+            if node.returns is None and not isinstance(new_body[-1], ast.Return):
+                new_body.append(ast.Return())
             node.body = new_body
             self.current_func.pop()
         return node

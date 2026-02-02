@@ -303,7 +303,7 @@ class ASTProcessor(ast.NodeTransformer):
         return node
 
     def visit_Tuple(self, node: ast.Tuple):
-        # e.g., A[i, j] -> Indexing
+        # e.g., return A, B
         raise NotImplementedError
 
     def visit_Dict(self, node: ast.Dict):

@@ -96,7 +96,6 @@ class IRBuilder(ast.NodeVisitor):
             return self.module
 
     def build_type(self, annotation: ast.Subscript):
-        # FIXME: parse from ast node (annotation)
         assert (
             isinstance(annotation.slice, ast.Tuple) and len(annotation.slice.elts) == 3
         )  # by construction
@@ -110,46 +109,49 @@ class IRBuilder(ast.NodeVisitor):
             return dtype.build()
         return MemRefType.get(shape, dtype.build())
 
-    def visit_Name(self, node):
+    def visit_Name(self, node: ast.Name):
         raise NotImplementedError
 
-    def visit_Constant(self, node):
+    def visit_Constant(self, node: ast.Constant):
         raise NotImplementedError
 
-    def visit_Subscript(self, node):
+    def visit_Tuple(self, node: ast.Tuple):
         raise NotImplementedError
 
-    def visit_Slice(self, node):
+    def visit_Subscript(self, node: ast.Subscript):
         raise NotImplementedError
 
-    def visit_BoolOp(self, node):
+    def visit_Slice(self, node: ast.Slice):
         raise NotImplementedError
 
-    def visit_AnnAssign(self, node):
+    def visit_BoolOp(self, node: ast.BoolOp):
         raise NotImplementedError
 
-    def visit_For(self, node):
+    def visit_AnnAssign(self, node: ast.AnnAssign):
         raise NotImplementedError
 
-    def visit_While(self, node):
+    def visit_For(self, node: ast.For):
         raise NotImplementedError
 
-    def visit_If(self, node):
+    def visit_While(self, node: ast.While):
         raise NotImplementedError
 
-    def visit_IfExp(self, node):
+    def visit_If(self, node: ast.If):
         raise NotImplementedError
 
-    def visit_Return(self, node):
+    def visit_IfExp(self, node: ast.IfExp):
         raise NotImplementedError
 
-    def visit_With(self, node):
+    def visit_Return(self, node: ast.Return):
         raise NotImplementedError
 
-    def visit_Call(self, node):
+    def visit_With(self, node: ast.With):
         raise NotImplementedError
 
-    def visit_FunctionDef(self, node):
+    def visit_Call(self, node: ast.Call):
+        raise NotImplementedError
+
+    def visit_FunctionDef(self, node: ast.FunctionDef):
         input_types = [self.build_type(arg.annotation) for arg in node.args.args]
         if node.returns is None:
             output_types = []

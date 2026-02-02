@@ -206,15 +206,6 @@ class ASTProcessor(ast.NodeTransformer):
     ) -> ast.AST:
         """
         Broadcast an expression to a specific shape. Return the broadcasted expression if broadcast is needed, otherwise return the original expression.
-
-        See the broadcasting rules in NumPy
-        https://numpy.org/doc/stable/user/basics.broadcasting.html
-        When operating on two arrays, NumPy compares their shapes element-wise.
-        It starts with the trailing (i.e. rightmost) dimension and works its way left.
-        Two dimensions are compatible when
-        1. they are equal, or
-        2. one of them is 1.
-        # TODO: should broadcasting both to make them compatible
         """
         if not hasattr(node, "dtype"):
             node.dtype = dtype
@@ -344,9 +335,40 @@ class ASTProcessor(ast.NodeTransformer):
         # e.g., -x, ~x, not x
         raise NotImplementedError
 
+    def resolve_broadcast_shape(self, shape_a, shape_b):
+        """
+        Compute the compatible shape specifically for broadcasting from shape_a and shape_b.
+
+        See the broadcasting rules in NumPy
+        https://numpy.org/doc/stable/user/basics.broadcasting.html
+        When operating on two arrays, NumPy compares their shapes element-wise.
+        It starts with the trailing (i.e. rightmost) dimension and works its way left.
+        Two dimensions are compatible when
+        1. they are equal, or
+        2. one of them is 1.
+        """
+        # Align shapes by prefixing with 1s
+        ndim_a, ndim_b = len(shape_a), len(shape_b)
+        ndim_res = max(ndim_a, ndim_b)
+        aligned_a = (1,) * (ndim_res - ndim_a) + tuple(shape_a)
+        aligned_b = (1,) * (ndim_res - ndim_b) + tuple(shape_b)
+
+        res_shape = []
+        for da, db in zip(aligned_a, aligned_b):
+            if da == db:
+                res_shape.append(da)
+            elif da == 1:
+                res_shape.append(db)
+            elif db == 1:
+                res_shape.append(da)
+            else:
+                raise ValueError(
+                    f"Operands could not be broadcast together with shapes {shape_a} {shape_b}"
+                )
+        return tuple(res_shape)
+
     def visit_BinOp(self, node: ast.BinOp):
-        # e.g., x + y, x - y, x * y, x / y, x // y, x % y, x ** y
-        #       x << y, x >> y, x | y, x ^ y, x & y
+        # e.g., x + y, x - y, x * y, x / y, x // y, x % y,
         node.left = self.visit(node.left)
         node.right = self.visit(node.right)
         # costant folding
@@ -362,8 +384,21 @@ class ASTProcessor(ast.NodeTransformer):
             raise TypeError(f"Type error in binary operation ({node.op}): {e}")
         left = self.visit_cast(node.left, l_type)
         right = self.visit_cast(node.right, r_type)
-        result_shape = node.left.shape
-        # TODO: broadcasting
+        # Broadcasting
+        lhs_shape = getattr(left, "shape", tuple())
+        rhs_shape = getattr(right, "shape", tuple())
+        if lhs_shape != rhs_shape:
+            try:
+                result_shape = self.resolve_broadcast_shape(lhs_shape, rhs_shape)
+            except ValueError as e:
+                raise ValueError(
+                    f"Broadcasting error in binary operation {node.op}: {e}"
+                )
+            left = self.visit_broadcast(left, left.dtype, result_shape)
+            right = self.visit_broadcast(right, right.dtype, result_shape)
+        else:
+            result_shape = lhs_shape
+
         call_node = ast.Call(
             func=ast.Attribute(
                 value=ast.Name(id="__allo__", ctx=ast.Load()),

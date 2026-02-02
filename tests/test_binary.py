@@ -48,6 +48,7 @@ def test_arith():
 
     s = process(kernel5)
 
+    # TODO: ast.Pow not supported for now
     # def kernel6() -> int32:
     #     A: int32 = 0
     #     B: int32 = 0
@@ -65,5 +66,31 @@ def test_arith():
     s = process(kernel7)
 
 
+def test_broadcast():
+    def kernel1() -> int32[10]:
+        A: int32[10] = 0
+        B: int32 = 1
+        C: int32[10] = A + B
+        return C
+
+    s = process(kernel1)
+
+    def kernel2() -> int32[10]:
+        A: int32[10] = 0
+        B: int32[1] = 1
+        C: int32[10] = A + B
+        return C
+
+    s = process(kernel2)
+
+    def kernel3() -> int32[10]:
+        A: int32[10] = 0
+        C: int32[10] = A + 1
+        return C
+
+    s = process(kernel3)
+
+
 if __name__ == "__main__":
     test_arith()
+    test_broadcast()

@@ -26,10 +26,10 @@ class AddHandler(BuiltinHandler):
                 return arith_d.AddFOp(left, right, ip=self.builder.get_ip())
             return allo_d.AddFixedOp(left, right, ip=self.builder.get_ip())
         else:
-            # TODO
-            # with self.builder.get_ip():
-            #     linalg_d.add(left, right)
-            raise NotImplementedError
+            alloc_op = self.builder.build_buffer(left.type)
+            with self.builder.get_ip():
+                linalg_d.add(left, right, outs=[alloc_op])
+            return alloc_op
 
 
 @register_builtin_handler("Sub")
@@ -46,8 +46,10 @@ class SubHandler(BuiltinHandler):
                 return arith_d.SubFOp(left, right, ip=self.builder.get_ip())
             return allo_d.SubFixedOp(left, right, ip=self.builder.get_ip())
         else:
-            # TODO
-            raise NotImplementedError
+            alloc_op = self.builder.build_buffer(left.type)
+            with self.builder.get_ip():
+                linalg_d.sub(left, right, outs=[alloc_op])
+            return alloc_op
 
 
 @register_builtin_handler("Mult")
@@ -64,14 +66,26 @@ class MultHandler(BuiltinHandler):
                 return arith_d.MulFOp(left, right, ip=self.builder.get_ip())
             return allo_d.MulFixedOp(left, right, ip=self.builder.get_ip())
         else:
-            # TODO
-            raise NotImplementedError
+            alloc_op = self.builder.build_buffer(left.type)
+            with self.builder.get_ip():
+                linalg_d.mul(left, right, outs=[alloc_op])
+            return alloc_op
 
 
 @register_builtin_handler("Div")
 class DivHandler(BuiltinHandler):
     def build(self, node: ast.Call, *args):
-        raise NotImplementedError
+        args_ = node.args
+        left = self.builder.get_op_result(self.builder.visit(args_[0]))
+        right = self.builder.get_op_result(self.builder.visit(args_[1]))
+        if len(getattr(left.type, "shape", [])) == 0:
+            # scalar
+            raise NotImplementedError
+        else:
+            alloc_op = self.builder.build_buffer(left.type)
+            with self.builder.get_ip():
+                linalg_d.div(left, right, outs=[alloc_op])
+            return alloc_op
 
 
 @register_builtin_handler("FloorDiv")

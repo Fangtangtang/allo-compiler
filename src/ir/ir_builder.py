@@ -127,6 +127,9 @@ class IRBuilder(ast.NodeVisitor):
         Args:
             annotation
             force_memref: if True, return memref type
+
+        Returns:
+            type, is_unsigned # FIXME: find a better way to handle unsigned
         """
         assert (
             isinstance(annotation.slice, ast.Tuple) and len(annotation.slice.elts) == 3
@@ -135,11 +138,17 @@ class IRBuilder(ast.NodeVisitor):
         shape = annotation.slice.elts[1]
         spec = annotation.slice.elts[2]
         assert isinstance(dtype, ast.Name) and isinstance(shape, ast.Tuple)
-        dtype = self.symbol_table.types[dtype.id]
+        allo_type = self.symbol_table.types[dtype.id]
         shape = [int(size.value) for size in shape.elts]
         if len(shape) == 0 and not force_memref:
-            return dtype.build()
-        return MemRefType.get(shape, dtype.build())
+            return allo_type.build(), dtype.id.startswith("u")
+        return MemRefType.get(shape, allo_type.build()), dtype.id.startswith("u")
+
+    def build_buffer(self, memref_type: MemRefType, is_unsigned: bool):
+        buffer = memref_d.AllocOp(memref_type, [], [], ip=self.get_ip())
+        if is_unsigned:
+            buffer.attributes["unsigned"] = UnitAttr.get()
+        return buffer
 
     def visit_Name(self, node: ast.Name):
         var = self.get_symbol(node.id)
@@ -278,8 +287,9 @@ class IRBuilder(ast.NodeVisitor):
             target = self.get_symbol(name=node.target.id, allow_missing=True)
             if target is None:
                 # declare new variable
-                memref_type = self.build_type(node.annotation, force_memref=True)
-                alloc_op = memref_d.AllocOp(memref_type, [], [], ip=self.get_ip())
+                alloc_op = self.build_buffer(
+                    *self.build_type(node.annotation, force_memref=True)
+                )
                 alloc_op.attributes["name"] = StringAttr.get(node.target.id)
                 self.put_var(node.target.id, val=alloc_op)
                 target = alloc_op
@@ -336,7 +346,11 @@ class IRBuilder(ast.NodeVisitor):
         raise NotImplementedError
 
     def visit_FunctionDef(self, node: ast.FunctionDef):
-        input_types = [self.build_type(arg.annotation) for arg in node.args.args]
+        input_types, input_is_unsigned = [], []
+        for arg in node.args.args:
+            in_type, is_unsigned = self.build_type(arg.annotation)
+            input_types.append(in_type)
+            input_is_unsigned.append(is_unsigned)
         if node.returns is None:
             output_types = []
         else:
@@ -345,7 +359,11 @@ class IRBuilder(ast.NodeVisitor):
                 if isinstance(node.returns, ast.Tuple)
                 else [node.returns]
             )
-            output_types = [self.build_type(ret) for ret in rets]
+            output_types, output_is_unsigned = [], []
+            for ret in rets:
+                out_type, is_unsigned = self.build_type(ret)
+                output_types.append(out_type)
+                output_is_unsigned.append(is_unsigned)
         # Build function
         func_type = FunctionType.get(input_types, output_types)
         func_op = func_d.FuncOp(name=node.name, type=func_type, ip=self.get_ip())

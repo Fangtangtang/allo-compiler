@@ -142,6 +142,8 @@ def test_assign():
         ),
     )
 
+    print("test_assign passed!")
+
 
 def test_augassign():
     def kernel1() -> int32:
@@ -216,7 +218,7 @@ def test_broadcast_init():
 
 
 if __name__ == "__main__":
-    # test_annassign()
+    test_annassign()
     test_assign()
     # test_augassign()
     # test_broadcast_init()

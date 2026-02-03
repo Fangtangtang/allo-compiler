@@ -12,7 +12,7 @@ class ConstantHandler(BuiltinHandler):
         args_ = node.args
         assert isinstance(args_[0], ast.Constant)
         assert isinstance(args_[1], ast.Subscript)
-        dtype = self.builder.build_type(args_[1])
+        dtype, _ = self.builder.build_type(args_[1])
         const_op = arith_d.ConstantOp(dtype, args_[0].value, ip=self.builder.get_ip())
         return const_op
 
@@ -30,8 +30,7 @@ class BroadcastHandler(BuiltinHandler):
         origianl = self.builder.get_op_result(self.builder.visit(args_[0]))
         assert isinstance(args_[1], ast.Tuple) and isinstance(args_[2], ast.Subscript)
         dims = [v.value for v in args_[1].elts]
-        dtype = self.builder.build_type(args_[2])
-        alloc_op = memref_d.AllocOp(dtype, [], [], ip=self.builder.get_ip())
+        alloc_op = self.builder.build_buffer(*self.builder.build_type(args_[2]))
         with self.builder.get_ip():
             if len(getattr(origianl.type, "shape", [])) == 0:
                 linalg_d.fill(origianl, outs=[alloc_op.result])

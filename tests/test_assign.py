@@ -55,11 +55,12 @@ def test_annassign():
 
 def test_assign():
     def kernel1() -> int32:
-        B: int32 = 0
+        B: int32 = 3
         A = B
         return A
 
     s = process(kernel1)
+    assert s() == 3
 
     def kernel2() -> int32:
         A: int32 = 0
@@ -69,6 +70,7 @@ def test_assign():
         return A
 
     s = process(kernel2)
+    assert s() == 0
 
     def kernel3() -> int32[2]:
         b: int32[2]
@@ -77,6 +79,7 @@ def test_assign():
         return b
 
     s = process(kernel3)
+    assert np.array_equal(s(), np.array([1, 0], dtype=np.int32))
 
     def kernel4() -> int32[2]:
         b: int32[2]
@@ -88,6 +91,56 @@ def test_assign():
         return b
 
     s = process(kernel4)
+    assert np.array_equal(s(), np.array([1, 0], dtype=np.int32))
+
+    def kernel5() -> int32[4, 3, 2]:
+        b: int32[2] = 1
+        a: int32[4, 3, 2]
+        a[0, :] = 0
+        a[0] = b[:]
+        b[0] = 2
+        b_: int32[2] = b[:]
+        a[1, :] = b_[:]
+        a[2, :, :] = b_
+        return a
+
+    s = process(kernel5)
+    assert np.array_equal(
+        s(),
+        np.array(
+            [
+                [[1, 1], [1, 1], [1, 1]],
+                [[2, 1], [2, 1], [2, 1]],
+                [[2, 1], [2, 1], [2, 1]],
+                [[0, 0], [0, 0], [0, 0]],
+            ],
+            dtype=np.int32,
+        ),
+    )
+
+    def kernel6(b: int32[2]) -> int32[4, 3, 2]:
+        a: int32[4, 3, 2]
+        a[0, :] = 0
+        a[0] = b[:]
+        b[0] = 2
+        b_: int32[2] = b[:]
+        a[1, :] = b_[:]
+        a[2, :, :] = b_
+        return a
+
+    s = process(kernel6)
+    assert np.array_equal(
+        s(np.array([4, 3], dtype=np.int32)),
+        np.array(
+            [
+                [[4, 3], [4, 3], [4, 3]],
+                [[2, 3], [2, 3], [2, 3]],
+                [[2, 3], [2, 3], [2, 3]],
+                [[0, 0], [0, 0], [0, 0]],
+            ],
+            dtype=np.int32,
+        ),
+    )
 
 
 def test_augassign():
@@ -164,19 +217,6 @@ def test_broadcast_init():
 
 if __name__ == "__main__":
     # test_annassign()
-    # test_assign()
+    test_assign()
     # test_augassign()
     # test_broadcast_init()
-    def kernel4() -> int32[2]:
-        b: int32[2] = 1
-        # b[0] = 2
-        # b[1] = 0
-        a: int32[2, 3, 2]
-        # b_: int32[2] = b[:]
-        a[0, :] = 0
-        a[0] = b[:]
-        # a[1, :] = b[:]
-        return b
-
-    s = process(kernel4)
-    print(s())

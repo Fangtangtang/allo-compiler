@@ -164,6 +164,8 @@ class IRBuilder(ast.NodeVisitor):
     def visit_Subscript(self, node: ast.Subscript, val=None):
         base = self.get_op_result(self.visit(node.value))
         shape: list[int] = base.type.shape  # tensor shape
+        layout = base.type.layout
+        print(layout)
         elts = node.slice.elts if isinstance(node.slice, ast.Tuple) else [node.slice]
         new_indices, dynamic_offset, offsets, sizes, strides = [], [], [], [], []
 
@@ -218,21 +220,33 @@ class IRBuilder(ast.NodeVisitor):
             sizes.extend(shape[len(offsets) :])
             strides.extend([1] * (len(shape) - len(offsets)))
             offsets.extend([0] * (len(shape) - len(offsets)))
-            result_sizes = [s for s in sizes if s > 1]
-            stride_attr = [1]
-            for i in range(len(result_sizes) - 2, -1, -1):
-                stride_attr.insert(0, stride_attr[0] * result_sizes[i + 1])
-            if len(dynamic_offset) > 0:
+            if isinstance(layout, StridedLayoutAttr):
+                orig_offset = layout.offset
+                orig_strides = layout.strides
+            elif isinstance(layout, AffineMapAttr):
+                orig_offset = 0
+                orig_strides = [1]
+                for i in reversed(shape[1:]):
+                    orig_strides.insert(0, orig_strides[0] * i)
+            else:
+                raise RuntimeError(f"Unsupported layout type {type(layout)}")
+            result_sizes = []
+            stride_attr = []
+            for idx_, size in enumerate(sizes):
+                if size > 1:
+                    result_sizes.append(size)
+                    stride_attr.append(strides[idx_] * orig_strides[idx_])
+            if len(dynamic_offset) > 0 or orig_offset < 0:
                 offset_attr = ShapedType.get_dynamic_stride_or_offset()
             else:
-                offset_attr = 0
+                offset_attr = orig_offset + sum(
+                    o * s for o, s in zip(offsets, orig_strides)
+                )
             result = MemRefType.get(
                 shape=result_sizes,
                 element_type=base.type.element_type,
-                layout=StridedLayoutAttr.get(
-                    offset=offset_attr,  # FIXME: relative to the base memref
-                    strides=stride_attr,  # FIXME
-                ),
+                # relative to the base memref
+                layout=StridedLayoutAttr.get(offset=offset_attr, strides=stride_attr),
             )
             subview = memref_d.SubViewOp(
                 source=base,

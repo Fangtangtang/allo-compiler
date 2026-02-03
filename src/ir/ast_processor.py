@@ -255,7 +255,7 @@ class ASTProcessor(ast.NodeTransformer):
                     elts=[ast.Constant(value=d) for d in dims],
                     ctx=ast.Load(),
                 ),  # dims
-                self.get_ast_annotaiton(dtype, target_shape, None),
+                self.get_ast_annotaiton(dtype, target_shape, None),  # target type
             ],
             keywords=[],
         )

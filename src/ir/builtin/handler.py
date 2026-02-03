@@ -4,7 +4,7 @@ import abc
 import ast
 
 # Registry for builtin handlers
-#   function name (str) -> Handler class 
+#   function name (str) -> Handler class
 BUILTIN_HANDLERS = {}
 
 
@@ -31,6 +31,6 @@ class BuiltinHandler(abc.ABC):
 
         Args:
             node: The ast.Call node.
-            args: The arguments passed to the function call 
+            args: The arguments passed to the function call
         """
         pass

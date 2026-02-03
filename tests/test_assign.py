@@ -155,17 +155,7 @@ def test_broadcast_init():
 
 
 if __name__ == "__main__":
-    # test_annassign()
-    # test_assign()
-    # test_augassign()
-    # test_broadcast_init()
-    def kernel3() -> int32[2]:
-        b: int32[2]
-        b[0] = 1
-        # b[1] = 0
-        a: int32[2, 2]
-        # a[0] = b
-        # a[1, :] = b[:]
-        return b
-
-    s = process(kernel3)
+    test_annassign()
+    test_assign()
+    test_augassign()
+    test_broadcast_init()

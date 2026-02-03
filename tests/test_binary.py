@@ -8,12 +8,13 @@ from allo.ir.types import int32, Int, ConstExpr, UInt
 def test_arith():
     def kernel1() -> int32:
         A: int32 = 0
-        B: int32 = 0
+        B: int32 = 1
         A = 0 - 1
         A = B + B
         return A
 
     s = process(kernel1)
+    assert s() == 2
 
     def kernel2() -> int32:
         A: int32 = 0
@@ -154,5 +155,5 @@ def test_compare():
 
 if __name__ == "__main__":
     test_arith()
-    test_broadcast()
-    test_compare()
+    # test_broadcast()
+    # test_compare()

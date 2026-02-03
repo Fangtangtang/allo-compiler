@@ -35,13 +35,37 @@ class AddHandler(BuiltinHandler):
 @register_builtin_handler("Sub")
 class SubHandler(BuiltinHandler):
     def build(self, node: ast.Call, *args):
-        raise NotImplementedError
+        args_ = node.args
+        left = self.builder.get_op_result(self.builder.visit(args_[0]))
+        right = self.builder.get_op_result(self.builder.visit(args_[1]))
+        if len(getattr(left.type, "shape", [])) == 0:
+            # scalar
+            if isinstance(left.type, IntegerType):
+                return arith_d.SubIOp(left, right, ip=self.builder.get_ip())
+            if isinstance(left.type, (BF16Type, F16Type, F32Type, F64Type)):
+                return arith_d.SubFOp(left, right, ip=self.builder.get_ip())
+            return allo_d.SubFixedOp(left, right, ip=self.builder.get_ip())
+        else:
+            # TODO
+            raise NotImplementedError
 
 
 @register_builtin_handler("Mult")
 class MultHandler(BuiltinHandler):
     def build(self, node: ast.Call, *args):
-        raise NotImplementedError
+        args_ = node.args
+        left = self.builder.get_op_result(self.builder.visit(args_[0]))
+        right = self.builder.get_op_result(self.builder.visit(args_[1]))
+        if len(getattr(left.type, "shape", [])) == 0:
+            # scalar
+            if isinstance(left.type, IntegerType):
+                return arith_d.MulIOp(left, right, ip=self.builder.get_ip())
+            if isinstance(left.type, (BF16Type, F16Type, F32Type, F64Type)):
+                return arith_d.MulFOp(left, right, ip=self.builder.get_ip())
+            return allo_d.MulFixedOp(left, right, ip=self.builder.get_ip())
+        else:
+            # TODO
+            raise NotImplementedError
 
 
 @register_builtin_handler("Div")

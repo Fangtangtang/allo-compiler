@@ -23,15 +23,17 @@ def test_arith():
         return A
 
     s = process(kernel2)
+    assert s() == -1
 
     def kernel3() -> int32:
         A: int32 = 0
-        B: int32 = 0
+        B: int32 = 1
         C: int32 = 0
         A, C = B * 2, 1 + B
         return A
 
     s = process(kernel3)
+    assert s() == 2
 
     def kernel4() -> int32:
         A: int32 = 0

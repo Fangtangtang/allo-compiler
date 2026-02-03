@@ -22,6 +22,7 @@ from allo._mlir.ir import (
     Value,
     FunctionType,
     MemRefType,
+    IndexType,
     RankedTensorType,
     ShapedType,
     IntegerType,
@@ -160,10 +161,94 @@ class IRBuilder(ast.NodeVisitor):
     def visit_Tuple(self, node: ast.Tuple):
         raise NotImplementedError
 
-    def visit_Subscript(self, node: ast.Subscript):
-        value = self.get_op_result(self.visit(node.value))
+    def visit_Subscript(self, node: ast.Subscript, val=None):
+        base = self.get_op_result(self.visit(node.value))
+        shape: list[int] = base.type.shape  # tensor shape
         elts = node.slice.elts if isinstance(node.slice, ast.Tuple) else [node.slice]
-        raise NotImplementedError
+        new_indices, dynamic_offset, offsets, sizes, strides = [], [], [], [], []
+
+        def get_indices(node: ast.expr):
+            if isinstance(node, ast.Constant):
+                return AffineConstantExpr.get(node.value), int(node.value)
+            # TODO: other cases
+            return None, None
+
+        for elt in elts:
+            aff, offset = get_indices(elt)
+            if aff is not None:
+                new_indices.append(aff)
+                if isinstance(offset, int):
+                    offsets.append(offset)
+                else:
+                    dynamic_offset.append(offset)
+                    offsets.append(ShapedType.get_dynamic_stride_or_offset())
+                sizes.append(1)
+                strides.append(1)
+            else:
+                assert isinstance(elt, ast.Slice)
+                lower, upper, step = elt.lower.value, elt.upper.value, elt.step.value
+                offsets.append(lower)
+                sizes.append((upper - lower) // step)
+                strides.append(step)
+        if len(new_indices) == len(shape):  # access element
+            # FIXME: dim_count, ivs
+            affine_map = AffineMap.get(dim_count=0, symbol_count=0, exprs=new_indices)
+            affine_attr = AffineMapAttr.get(affine_map)
+            ivs = []
+            if isinstance(node.ctx, ast.Load):
+                op = affine_d.AffineLoadOp(
+                    base.type.element_type,
+                    base,
+                    ivs,
+                    affine_attr,
+                    ip=self.get_ip(),
+                )
+                return op
+            else:  # ast.Store
+                op = affine_d.AffineStoreOp(
+                    val,
+                    base,
+                    ivs,
+                    affine_attr,
+                    ip=self.get_ip(),
+                )
+                return None
+        else:  # access slice
+            # TODO: support hybrid slice
+            sizes.extend(shape[len(offsets) :])
+            strides.extend([1] * (len(shape) - len(offsets)))
+            offsets.extend([0] * (len(shape) - len(offsets)))
+            result_sizes = [s for s in sizes if s > 1]
+            stride_attr = [1]
+            for i in range(len(result_sizes) - 2, -1, -1):
+                stride_attr.insert(0, stride_attr[0] * result_sizes[i + 1])
+            if len(dynamic_offset) > 0:
+                offset_attr = ShapedType.get_dynamic_stride_or_offset()
+            else:
+                offset_attr = 0
+            result = MemRefType.get(
+                shape=result_sizes,
+                element_type=base.type.element_type,
+                layout=StridedLayoutAttr.get(
+                    offset=offset_attr,  # FIXME: relative to the base memref
+                    strides=stride_attr,  # FIXME
+                ),
+            )
+            subview = memref_d.SubViewOp(
+                source=base,
+                result=result,
+                static_offsets=offsets,
+                static_sizes=sizes,
+                static_strides=strides,
+                offsets=dynamic_offset,
+                sizes=[],
+                strides=[],
+                ip=self.get_ip(),
+            )
+            if isinstance(node.ctx, ast.Load):
+                return subview
+            else:
+                return memref_d.CopyOp(val, subview.result, ip=self.get_ip())
 
     def visit_Slice(self, node: ast.Slice):
         raise NotImplementedError
@@ -184,7 +269,11 @@ class IRBuilder(ast.NodeVisitor):
                 alloc_op.attributes["name"] = StringAttr.get(node.target.id)
                 self.put_var(node.target.id, val=alloc_op)
                 target = alloc_op
+        elif isinstance(node.target, ast.Subscript):
+            self.visit_Subscript(node.target, val=value)
+            return
         else:
+            # FIXME: unreachable?
             target = self.visit(node.target)
         if value is None:
             return

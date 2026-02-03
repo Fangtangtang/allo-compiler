@@ -74,12 +74,20 @@ def test_assign():
         b: int32[2]
         b[0] = 1
         b[1] = 0
+        return b
+
+    s = process(kernel3)
+
+    def kernel4() -> int32[2]:
+        b: int32[2]
+        b[0] = 1
+        b[1] = 0
         a: int32[2, 2]
         a[0] = b
         a[1, :] = b[:]
         return b
 
-    s = process(kernel3)
+    s = process(kernel4)
 
 
 def test_augassign():
@@ -155,7 +163,20 @@ def test_broadcast_init():
 
 
 if __name__ == "__main__":
-    test_annassign()
-    test_assign()
-    test_augassign()
-    test_broadcast_init()
+    # test_annassign()
+    # test_assign()
+    # test_augassign()
+    # test_broadcast_init()
+    def kernel4() -> int32[2]:
+        b: int32[2] = 1
+        # b[0] = 2
+        # b[1] = 0
+        a: int32[2, 3, 2]
+        # b_: int32[2] = b[:]
+        a[0, :] = 0
+        a[0] = b[:]
+        # a[1, :] = b[:]
+        return b
+
+    s = process(kernel4)
+    print(s())

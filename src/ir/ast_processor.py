@@ -252,13 +252,10 @@ class ASTProcessor(ast.NodeTransformer):
             args=[
                 node,  # original node
                 ast.Tuple(
-                    elts=[ast.Constant(value=d) for d in target_shape],
-                    ctx=ast.Load(),
-                ),  # target shape
-                ast.Tuple(
                     elts=[ast.Constant(value=d) for d in dims],
                     ctx=ast.Load(),
                 ),  # dims
+                self.get_ast_annotaiton(dtype, target_shape, None),
             ],
             keywords=[],
         )

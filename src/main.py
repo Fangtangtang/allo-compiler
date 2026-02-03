@@ -18,7 +18,7 @@ def process(fn: Union[Callable, str], instantiate: list = None):
     ast_processor = ASTProcessor(symbol_table, global_symbols=get_global_vars(fn))
     # process the top function
     node = ast_processor.process(fn, instantiate=instantiate)
-    print(ast.unparse(node))
+    print(ast.unparse(node), "\n")
     builder = IRBuilder(symbol_table)
     module = builder.build(node)
     print(module)

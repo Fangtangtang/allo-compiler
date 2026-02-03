@@ -229,7 +229,7 @@ class IRBuilder(ast.NodeVisitor):
                 name = node.func.attr
                 assert name in BUILTIN_HANDLERS
                 handler = BUILTIN_HANDLERS[name](self)
-                return handler.build(node, *node.args)
+                return handler.build(node)
         raise NotImplementedError
 
     def visit_FunctionDef(self, node: ast.FunctionDef):

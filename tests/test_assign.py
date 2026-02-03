@@ -137,6 +137,8 @@ def test_broadcast_init():
         return a
 
     s = process(kernel1)
+    assert np.array_equal(s(), np.array([1, 1], dtype=np.int32))
+    return
 
     def kernel2() -> int32:
         a: int32 = 1
@@ -154,7 +156,7 @@ def test_broadcast_init():
 
 
 if __name__ == "__main__":
-    test_annassign()
+    # test_annassign()
     # test_assign()
     # test_augassign()
-    # test_broadcast_init()
+    test_broadcast_init()

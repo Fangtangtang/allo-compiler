@@ -336,6 +336,7 @@ class ASTProcessor(ast.NodeTransformer):
             elts = (
                 node.slice.elts if isinstance(node.slice, ast.Tuple) else [node.slice]
             )
+            new_elts = []
             assert len(elts) <= len(value.shape)
             shape = []
             for idx, elt in enumerate(elts):
@@ -349,8 +350,15 @@ class ASTProcessor(ast.NodeTransformer):
                     size = (elt_.upper.value - elt_.lower.value) // elt_.step.value
                     if size > 0:
                         shape.append(size)
+                else:
+                    elt_ = self.visit_cast(elt_, Index())
+                new_elts.append(elt_)
             shape.extend(value.shape[len(elts) :])
             node.dtype, node.shape = value.dtype, tuple(shape)
+            if isinstance(node.slice, ast.Tuple):
+                node.slice.elts = new_elts
+            else:
+                node.slice = new_elts[0]
             return node
         raise NotImplementedError
 

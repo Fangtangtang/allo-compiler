@@ -4,8 +4,7 @@ import abc
 import ast
 
 # Registry for builtin handlers
-# Key: function name (str)
-# Value: Handler class
+#   function name (str) -> Handler class 
 BUILTIN_HANDLERS = {}
 
 
@@ -20,13 +19,10 @@ def register_builtin_handler(name):
 class BuiltinHandler(abc.ABC):
     def __init__(self, builder):
         """
-        Initialize the handler with the IRBuilder instance.
-
         Args:
             builder: The IRBuilder instance invoking this handler.
         """
         self.builder = builder
-        self.ctx = builder.ctx
 
     @abc.abstractmethod
     def build(self, node: ast.Call, *args):
@@ -35,9 +31,6 @@ class BuiltinHandler(abc.ABC):
 
         Args:
             node: The ast.Call node.
-            args: The arguments passed to the function call (already visited/evaluated if needed,
-                  but usually we might want raw nodes or visited values depending on design.
-                  In IRBuilder.visit_Call, usually args are visited before call.
-                  Let's assume args are the MLIR values or Mock objects corresponding to the arguments).
+            args: The arguments passed to the function call 
         """
         pass

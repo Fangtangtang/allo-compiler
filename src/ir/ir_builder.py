@@ -162,7 +162,7 @@ class IRBuilder(ast.NodeVisitor):
 
     def visit_Subscript(self, node: ast.Subscript):
         value = self.get_op_result(self.visit(node.value))
-        print(value)
+        elts =  node.slice.elts if isinstance(node.slice, ast.Tuple) else [node.slice]
         raise NotImplementedError
 
     def visit_Slice(self, node: ast.Slice):

@@ -3,6 +3,7 @@
 
 from src.main import process
 from allo.ir.types import int32, Int, ConstExpr, Fixed
+import numpy as np
 
 
 def test_annassign():
@@ -18,11 +19,14 @@ def test_annassign():
         """
         A: int32 = 0
         B: int32 = zero
-        # C: ConstExpr[int32] = one
-        # D: ConstExpr[int32] = C + 2
-        return B
+        C: ConstExpr[int32] = one
+        D: ConstExpr[int32] = C + 2
+        E: int32 = C + 1
+        F: int32 = C
+        return E
 
     s = process(kernel1)
+    assert s() == one + 1
 
     def kernel2(A: int32) -> int32:
         """
@@ -33,12 +37,20 @@ def test_annassign():
         return C
 
     s = process(kernel2)
+    assert s(1) == 1
+    assert s(2) == 2
+    assert s(-1) == -1
 
-    def kernel3(a: int32[32]) -> int32[32]:
-        b: int32[32] = a
+    def kernel3(a: int32[8]) -> int32[8]:
+        b: int32[8] = a
         return b
 
     s = process(kernel3)
+    np_A = np.array([1, 2, 3, 4, 5, 6, 7, 8], dtype=np.int32)
+    np_B = s(np_A)
+    assert np.array_equal(np_A, np_B)
+
+    print("test_annassign passed!")
 
 
 def test_assign():

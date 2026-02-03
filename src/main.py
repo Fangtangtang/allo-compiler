@@ -22,5 +22,4 @@ def process(fn: Union[Callable, str], instantiate: list = None):
     builder = IRBuilder(symbol_table)
     module = builder.build(node)
     print(module)
-    # name = fn.__name__
-    # return LLVMModule()
+    return LLVMModule(module, fn.__name__)

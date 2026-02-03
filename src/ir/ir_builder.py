@@ -161,6 +161,8 @@ class IRBuilder(ast.NodeVisitor):
         raise NotImplementedError
 
     def visit_Subscript(self, node: ast.Subscript):
+        value = self.get_op_result(self.visit(node.value))
+        print(value)
         raise NotImplementedError
 
     def visit_Slice(self, node: ast.Slice):
@@ -183,7 +185,7 @@ class IRBuilder(ast.NodeVisitor):
                 self.put_var(node.target.id, val=alloc_op)
                 target = alloc_op
         else:
-            raise NotImplementedError
+            target = self.visit(node.target)
         if value is None:
             return
         if isinstance(value.type, MemRefType):

@@ -111,7 +111,9 @@ class ASTProcessor(ast.NodeTransformer):
         if consts is None:
             consts = self.get_consts()
             consts.update(self.global_symbols)
-        return eval(compile(ast.Expression(node), "", "eval"), consts)
+        return eval(
+            compile(ast.fix_missing_locations(ast.Expression(node)), "", "eval"), consts
+        )
 
     def resolve_node(self, node: ast.AST):
         if isinstance(node, ast.Name):
@@ -165,7 +167,7 @@ class ASTProcessor(ast.NodeTransformer):
                 # e.g., a: ConstExpr[int32]
                 ele_type, ele_shape, _ = self.visit_type_annotation(annotation.slice)
                 assert len(ele_shape) == 0, "ConstExpr only supports scalar types"
-                const_dtype = copy.deepcopy(base_type)
+                const_dtype = copy.deepcopy(ele_type)
                 const_dtype.constexpr = True
                 return const_dtype, tuple(), None
             size = annotation.slice
@@ -264,8 +266,8 @@ class ASTProcessor(ast.NodeTransformer):
         return call_node
 
     def visit_cast(self, node: ast.AST, target_dtype: AlloType) -> ast.AST:
-        if not hasattr(node, "dtype"):
-            # constant should be 'typed', replace the node with builtin constant construction function call
+        if isinstance(node, ast.Constant):
+            # constant should be explicitly 'typed', replace the node with builtin constant construction function call
             shape = node.shape
             node = ast.Call(
                 func=ast.Attribute(
@@ -305,6 +307,8 @@ class ASTProcessor(ast.NodeTransformer):
     def visit_Name(self, node: ast.Name):
         var = self.get_symbol(node.id, allow_missing=True)
         if var is not None:
+            if isinstance(var, ast.Constant):
+                return var
             node.dtype, node.shape = var.dtype, var.shape
             return node
         const_node = ast.Constant(self.eval_constant(node))
@@ -593,6 +597,8 @@ class ASTProcessor(ast.NodeTransformer):
             node.value = ast.Constant(self.eval_constant(node.value))
             self.put_const(node.target.id, node.value)
             node.value.dtype, node.value.shape = dtype, shape
+            # FIXME: can we delete const expr here?
+            return None
         else:
             if node.value is not None:
                 value = self.visit(node.value)

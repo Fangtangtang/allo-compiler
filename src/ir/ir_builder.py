@@ -18,6 +18,8 @@ from allo._mlir.ir import (
     Module,
     Location,
     InsertionPoint,
+    OpView,
+    Value,
     FunctionType,
     MemRefType,
     RankedTensorType,
@@ -98,6 +100,17 @@ class IRBuilder(ast.NodeVisitor):
             return None
         raise RuntimeError("unreachable")
 
+    def get_op_result(self, val):
+        if isinstance(val, OpView):
+            if isinstance(val.result, OpResultList):
+                assert len(val.result) == 1
+                return val.result[0]
+            return val.result
+        if isinstance(val, MockArg):
+            return val.result
+        assert isinstance(val, Value), f"Fail to resolve op result: {val}"
+        return val
+
     def build(self, ast_module: ast.FunctionDef):
         with self.ctx, Location.unknown():
             self.module = Module.create()
@@ -128,10 +141,20 @@ class IRBuilder(ast.NodeVisitor):
         return MemRefType.get(shape, dtype.build())
 
     def visit_Name(self, node: ast.Name):
+        var = self.get_symbol(node.id)
+        if isinstance(node.ctx, ast.Load):
+            var = self.get_op_result(var)
+            if isinstance(var.type, MemRefType) and len(var.type.shape) == 0:
+                # load scalar from memref
+                affine_map = AffineMap.get_identity(0)
+                affine_attr = AffineMapAttr.get(affine_map)
+                var = affine_d.AffineLoadOp(
+                    var.type.element_type, var, [], affine_attr, ip=self.get_ip()
+                )
+            return var
         raise NotImplementedError
 
     def visit_Constant(self, node: ast.Constant):
-
         raise NotImplementedError
 
     def visit_Tuple(self, node: ast.Tuple):
@@ -147,7 +170,9 @@ class IRBuilder(ast.NodeVisitor):
         raise NotImplementedError
 
     def visit_AnnAssign(self, node: ast.AnnAssign):
-        value = None if node.value is None else self.visit(node.value)
+        value = (
+            None if node.value is None else self.get_op_result(self.visit(node.value))
+        )
         if isinstance(node.target, ast.Name):
             target = self.get_symbol(name=node.target.id, allow_missing=True)
             if target is None:
@@ -157,9 +182,19 @@ class IRBuilder(ast.NodeVisitor):
                 alloc_op.attributes["name"] = StringAttr.get(node.target.id)
                 self.put_var(node.target.id, val=alloc_op)
                 target = alloc_op
-            if value is None:
-                return
-        raise NotImplementedError
+        else:
+            raise NotImplementedError
+        if value is None:
+            return
+        if isinstance(value.type, MemRefType):
+            # tensor
+            memref_d.CopyOp(value, target, ip=self.get_ip())
+        else:
+            # scalar
+            affine_map = AffineMap.get(dim_count=0, symbol_count=0, exprs=[])
+            affine_d.AffineStoreOp(
+                value, target, [], AffineMapAttr.get(affine_map), ip=self.get_ip()
+            )
 
     def visit_For(self, node: ast.For):
         raise NotImplementedError
@@ -177,7 +212,8 @@ class IRBuilder(ast.NodeVisitor):
         if node.value is None:
             func_d.ReturnOp([], ip=self.get_ip())
             return
-        raise NotImplementedError
+        ret = self.visit(node.value)
+        func_d.ReturnOp(ret if isinstance(ret, list) else [ret], ip=self.get_ip())
 
     def visit_With(self, node: ast.With):
         raise NotImplementedError

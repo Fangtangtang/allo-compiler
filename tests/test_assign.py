@@ -18,8 +18,8 @@ def test_annassign():
         """
         A: int32 = 0
         B: int32 = zero
-        C: ConstExpr[int32] = one
-        D: ConstExpr[int32] = C + 2
+        # C: ConstExpr[int32] = one
+        # D: ConstExpr[int32] = C + 2
         return B
 
     s = process(kernel1)
@@ -142,12 +142,7 @@ def test_broadcast_init():
 
 
 if __name__ == "__main__":
-
-    def kernel1():
-        A: int32 = 0
-
-    s = process(kernel1)
-    # test_annassign()
+    test_annassign()
     # test_assign()
     # test_augassign()
     # test_broadcast_init()

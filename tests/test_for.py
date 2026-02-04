@@ -1,15 +1,9 @@
 # Copyright Allo authors. All Rights Reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-import tempfile
-
 import numpy as np
-import pytest
 from src.main import process
-from allo.ir.types import bool, int8, int32, float32, index, ConstExpr
-import allo.backend.hls as hls
-import io
-from contextlib import redirect_stdout
+from allo.ir.types import bool, int8, int32, float32
 
 
 def test_vadd():
@@ -96,7 +90,7 @@ def test_scf_for():
 
 if __name__ == "__main__":
     test_vadd()
-    test_range_for()
-    test_variable_bound_for()
-    test_variable_bound_for_2()
-    test_scf_for()
+    # test_range_for()
+    # test_variable_bound_for()
+    # test_variable_bound_for_2()
+    # test_scf_for()

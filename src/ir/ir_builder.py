@@ -165,27 +165,30 @@ class IRBuilder(ast.NodeVisitor):
         raise NotImplementedError
 
     def visit_Constant(self, node: ast.Constant):
+        # FIXME: tentative
+        if isinstance(node.value, int):
+            return arith_d.ConstantOp(
+                arith_d.IndexType.get(), node.value, ip=self.get_ip()
+            )
         raise NotImplementedError
 
     def visit_Tuple(self, node: ast.Tuple):
         raise NotImplementedError
 
+    def get_affine_expr(self, node: ast.expr):
+        if isinstance(node, ast.Constant):
+            return AffineConstantExpr.get(node.value), int(node.value)
+        # TODO: other cases
+        return None, None
+
     def visit_Subscript(self, node: ast.Subscript, val=None):
         base = self.get_op_result(self.visit(node.value))
         shape: list[int] = base.type.shape  # tensor shape
         layout = base.type.layout
-        print(layout)
         elts = node.slice.elts if isinstance(node.slice, ast.Tuple) else [node.slice]
         new_indices, dynamic_offset, offsets, sizes, strides = [], [], [], [], []
-
-        def get_indices(node: ast.expr):
-            if isinstance(node, ast.Constant):
-                return AffineConstantExpr.get(node.value), int(node.value)
-            # TODO: other cases
-            return None, None
-
         for elt in elts:
-            aff, offset = get_indices(elt)
+            aff, offset = self.get_affine_expr(elt)
             if aff is not None:
                 new_indices.append(aff)
                 if isinstance(offset, int):
@@ -312,7 +315,24 @@ class IRBuilder(ast.NodeVisitor):
             )
 
     def visit_For(self, node: ast.For):
-        raise NotImplementedError
+        # TODO: should use higher-level affine loop if possible
+        args = node.iter.args
+        lb = self.get_op_result(self.visit(args[0]))
+        rb = self.get_op_result(self.visit(args[1]))
+        step = self.get_op_result(self.visit(args[2]))
+        for_op = scf_d.ForOp(lb, rb, step, ip=self.get_ip())
+        scf_d.YieldOp([], ip=InsertionPoint(for_op.body))
+        
+        with self.block_scope_guard():
+            self.put_var(
+                name=node.target.id,
+                val=for_op.induction_variable,
+            )
+            self.set_ip(for_op.body.operations[0])
+            for stmt in node.body:
+                self.visit(stmt)
+            self.pop_ip()
+        return
 
     def visit_While(self, node: ast.While):
         raise NotImplementedError

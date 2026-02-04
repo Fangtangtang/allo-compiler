@@ -21,6 +21,19 @@ def test_vadd():
     s(np_A, np_B, np_D)
     np.testing.assert_allclose(np_C, np_D)
 
+    # def madd(A: float32[32, 4], B: float32[32, 4], C: float32[32, 4]):
+    #     for i in range(32):
+    #         C[i] = A[i] + B[i]
+
+    # s = process(madd)
+    # np_A = np.random.rand(32, 4).astype(np.float32)
+    # np_B = np.random.rand(32, 4).astype(np.float32)
+    # np_C = np.zeros((32, 4), dtype=np.float32)
+    # madd(np_A, np_B, np_C)
+    # np_D = np.zeros((32, 4), dtype=np.float32)
+    # s(np_A, np_B, np_D)
+    # np.testing.assert_allclose(np_C, np_D)
+
     print("pass test_vadd")
 
 

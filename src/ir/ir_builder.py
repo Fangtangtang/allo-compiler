@@ -61,6 +61,7 @@ class IRBuilder(ast.NodeVisitor):
         register_dialect(self.ctx)
         self.module: Module = None
 
+        self.current_func: func_d.FuncOp = None  # the function under construction
         self.ip_stack = []  # module insert pointes
 
     def visit(self, node):
@@ -376,7 +377,20 @@ class IRBuilder(ast.NodeVisitor):
         if node.value is None:
             func_d.ReturnOp([], ip=self.get_ip())
             return
-        ret = self.visit(node.value)
+        ret = self.get_op_result(self.visit(node.value))
+
+        print(
+            self.current_func.type.results[0],
+            self.current_func.type.results[0] == ret.type,
+        )
+        if (
+            isinstance(ret.type, MemRefType)
+            and ret.type != self.current_func.type.results[0]
+        ):  # mlir has strict type checking, `memref<32xi32, strided<[1]>>` != `memref<32xi32>`
+            # FIXME: return unsigned?
+            alloc_op = self.build_buffer(self.current_func.type.results[0], False)
+            memref_d.CopyOp(ret, alloc_op.result, ip=self.get_ip())
+            ret = alloc_op.result
         func_d.ReturnOp(ret if isinstance(ret, list) else [ret], ip=self.get_ip())
 
     def visit_With(self, node: ast.With):
@@ -417,6 +431,7 @@ class IRBuilder(ast.NodeVisitor):
         func_type = FunctionType.get(input_types, output_types)
         func_op = func_d.FuncOp(name=node.name, type=func_type, ip=self.get_ip())
         func_op.add_entry_block()
+        self.current_func = func_op
         with self.block_scope_guard():
             # function arguments
             for i, (ast_arg, arg) in enumerate(zip(node.args.args, func_op.arguments)):

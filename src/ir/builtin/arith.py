@@ -12,6 +12,21 @@ from allo._mlir.dialects import (
 from allo._mlir.ir import IntegerType, BF16Type, F16Type, F32Type, F64Type, UnitAttr
 
 
+def type_compatible(types):
+    """
+    Helper function to check if all types are compatible. (to match linalg_d op's type constraint)
+    """
+    if len(types) <= 1:
+        return True
+    ref = types[0]
+    for t in types[1:]:
+        if not type(t) is type(ref):
+            return False
+        if t.element_type != ref.element_type or t.shape != ref.shape:
+            return False
+    return True
+
+
 @register_builtin_handler("Add")
 class AddHandler(BuiltinHandler):
     def build(self, node: ast.Call, *args):
@@ -31,7 +46,8 @@ class AddHandler(BuiltinHandler):
                 op.attributes["unsigned"] = UnitAttr.get()
             return op
         else:
-            assert result_type == left.type, "hard constraint of linalg_d.add failed"
+            if not type_compatible([left.type, right.type, result_type]):
+                raise ValueError("hard constraint of linalg_d.add failed")
             alloc_op = self.builder.build_buffer(left.type, is_unsigned)
             with self.builder.get_ip():
                 linalg_d.add(left, right, outs=[alloc_op])
@@ -57,7 +73,8 @@ class SubHandler(BuiltinHandler):
                 op.attributes["unsigned"] = UnitAttr.get()
             return op
         else:
-            assert result_type == left.type, "hard constraint of linalg_d.sub failed"
+            if not type_compatible([left.type, right.type, result_type]):
+                raise ValueError("hard constraint of linalg_d.sub failed")
             alloc_op = self.builder.build_buffer(left.type, is_unsigned)
             with self.builder.get_ip():
                 linalg_d.sub(left, right, outs=[alloc_op])
@@ -83,7 +100,8 @@ class MultHandler(BuiltinHandler):
                 op.attributes["unsigned"] = UnitAttr.get()
             return op
         else:
-            assert result_type == left.type, "hard constraint of linalg_d.mul failed"
+            if not type_compatible([left.type, right.type, result_type]):
+                raise ValueError("hard constraint of linalg_d.mul failed")
             alloc_op = self.builder.build_buffer(left.type, is_unsigned)
             with self.builder.get_ip():
                 linalg_d.mul(left, right, outs=[alloc_op])
@@ -113,7 +131,8 @@ class DivHandler(BuiltinHandler):
                     op.attributes["unsigned"] = UnitAttr.get()
                 return op
         else:
-            assert result_type == left.type, "hard constraint of linalg_d.div failed"
+            if not type_compatible([left.type, right.type, result_type]):
+                raise ValueError("hard constraint of linalg_d.div failed")
             alloc_op = self.builder.build_buffer(left.type, is_unsigned)
             with self.builder.get_ip():
                 linalg_d.div(left, right, outs=[alloc_op])

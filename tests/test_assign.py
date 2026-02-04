@@ -148,42 +148,47 @@ def test_assign():
 def test_augassign():
     def kernel1() -> int32:
         A: int32 = 0
-        B: int32 = 0
+        B: int32 = 1
         A += B
         return A
 
     s = process(kernel1)
+    assert s() == 1
 
     def kernel2() -> int32:
         A: int32[2] = 0
-        B: int32 = 0
+        B: int32 = 1
         A[0] += B
         return A[0]
 
     s = process(kernel2)
+    assert s() == 1
 
     def kernel3() -> int32:
-        A: int32 = 0
-        B: int32 = 0
+        A: int32 = 2
+        B: int32 = 1
         A -= B
         return A
 
     s = process(kernel3)
+    assert s() == 1
 
     def kernel4() -> int32:
-        A: int32 = 0
-        B: int32 = 0
+        A: int32 = 2
+        B: int32 = 2
         A *= B
         return A
 
     s = process(kernel4)
+    assert s() == 4
 
     def kernel5() -> int32:
-        A: int32[2] = 0
+        A: int32[2] = 2
         A[0] -= 1
         return A[0]
 
     s = process(kernel5)
+    assert s() == 1
 
     def kernel6() -> int32:
         A: int32[2, 2] = 0
@@ -191,6 +196,25 @@ def test_augassign():
         return A[0, 0]
 
     s = process(kernel6)
+    assert s() == -1
+
+    def kernel7() -> int32:
+        A: int32[2, 2] = 2
+        A[0] *= 2
+        return A[0, 0]
+
+    s = process(kernel7)
+    assert s() == 4
+
+    def kernel8() -> int32:
+        A: int32[2, 2] = 2
+        A[0] /= 2
+        return A[0, 0]
+
+    s = process(kernel8)
+    assert s() == 1
+
+    print("test_augassign passed!")
 
 
 def test_broadcast_init():
@@ -208,6 +232,7 @@ def test_broadcast_init():
         return b[0, 0]
 
     s = process(kernel2)
+    assert s() == 1
 
     def kernel3() -> int32:
         a: int32[32] = 1
@@ -215,10 +240,42 @@ def test_broadcast_init():
         return b[0, 0]
 
     s = process(kernel3)
+    assert s() == 1
+
+    def kernel4(a: int32[32]) -> int32[32]:
+        b: int32[4, 32] = a
+        return b[1]
+
+    s = process(kernel4)
+    np_A = np.random.randint(0, 10, size=32, dtype=np.int32)
+    np_B = s(np_A)
+    assert np.array_equal(np_B, np_A)
+
+    def kernel4(a: int32[32]) -> int32[32]:
+        b: int32[4, 32] = a
+        return b[2, :]
+
+    s = process(kernel4)
+    np_A = np.random.randint(0, 10, size=32, dtype=np.int32)
+    np_B = s(np_A)
+    assert np.array_equal(np_B, np_A)
+
+    def kernel5(a: int32[32]) -> int32[2, 32]:
+        b: int32[4, 2, 32] = a
+        return b[3, :]
+
+    s = process(kernel5)
+    np_A = np.random.randint(0, 10, size=32, dtype=np.int32)
+    np_B = s(np_A)
+    assert np.array_equal(np_B[0], np_A)
+    assert np.array_equal(np_B[1], np_A)
+
+    print("test_broadcast_init passed!")
 
 
 if __name__ == "__main__":
     test_annassign()
     test_assign()
-    # test_augassign()
-    # test_broadcast_init()
+    test_augassign()
+    test_broadcast_init()
+

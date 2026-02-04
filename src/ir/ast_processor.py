@@ -707,6 +707,7 @@ class ASTProcessor(ast.NodeTransformer):
         raise NotImplementedError
 
     def visit_Return(self, node: ast.Return):
+        # TODO: return a tuple (multiple return value)
         node.value = self.visit(node.value)
         func_node = self.symbol_table.functions[self.current_func[-1]]
         node.value = self.visit_cast(node.value, func_node.dtype)

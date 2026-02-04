@@ -218,7 +218,13 @@ def test_broadcast_init():
 
 
 if __name__ == "__main__":
-    test_annassign()
-    test_assign()
+    # test_annassign()
+    # test_assign()
     # test_augassign()
     # test_broadcast_init()
+    def kernel2() -> int32:
+        a: int32 = 1
+        b: int32[32, 32] = a
+        return b[0, 0]
+
+    s = process(kernel2)

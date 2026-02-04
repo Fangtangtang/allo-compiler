@@ -60,6 +60,8 @@ def kernel2() -> __allo__[i32, (), None]:
     return b[0, 0] 
 ```
 
+broadcast (and cast) are explicitly excoded as builtin func call
+
 Allo IR
 ```mlir
 module {

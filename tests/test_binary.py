@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from src.main import process
-from allo.ir.types import int32, Int, ConstExpr, UInt
+from allo.ir.types import int32, uint16, Int, ConstExpr, UInt
 
 
 def test_arith():
@@ -10,6 +10,15 @@ def test_arith():
         A: int32 = 0
         B: int32 = 1
         A = 0 - 1
+        A = B + B
+        return A
+
+    s = process(kernel1)
+    assert s() == 2
+
+    def kernel1() -> uint16:
+        A: uint16 = 0
+        B: uint16 = 1
         A = B + B
         return A
 
@@ -35,21 +44,33 @@ def test_arith():
     s = process(kernel3)
     assert s() == 2
 
+    def kernel3() -> uint16:
+        A: uint16 = 0
+        B: uint16 = 1
+        C: uint16 = 2
+        A, C = B * C, 1 + B
+        return A
+
+    s = process(kernel3)
+    assert s() == 2
+
     def kernel4() -> int32:
-        A: int32 = 0
-        B: int32 = 0
+        A: int32 = 4
+        B: int32 = 2
         A = B // 2
         return A
 
     s = process(kernel4)
+    assert s() == 1
 
     def kernel5() -> int32:
-        A: int32 = 0
-        B: int32 = 0
-        A = B % 2
+        A: int32 = 5
+        B: int32 = 2
+        A = A % B
         return A
 
     s = process(kernel5)
+    assert s() == 1
 
     # TODO: ast.Pow not supported for now
     # def kernel6() -> int32:
@@ -67,6 +88,28 @@ def test_arith():
         return A
 
     s = process(kernel7)
+    assert s() == 3
+
+    def kernel8() -> uint16:
+        A: uint16 = 0
+        B: uint16 = 0
+        A = 1 + B + B + 2
+        return A
+
+    s = process(kernel8)
+    assert s() == 3
+
+    def kernel9(a: int32, b: int32) -> int32:
+        A: int32 = a
+        B: int32 = b
+        A = 1 + B + B + 2
+        return A
+
+    s = process(kernel9)
+    assert s(1, 2) == 7
+    assert s(2, 3) == 9
+
+    print("pass test_arith")
 
 
 def test_broadcast():
@@ -99,6 +142,14 @@ def test_compare():
         A: int32 = 0
         B: int32 = 0
         C: UInt(8) = A == B
+
+    s = process(kernel1)
+
+    def kernel1() -> UInt(32)[10]:
+        A: UInt(32)[10] = 0
+        B: UInt(32) = 1
+        C: UInt(32)[10] = A + B
+        return C
 
     s = process(kernel1)
 

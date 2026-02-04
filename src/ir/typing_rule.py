@@ -347,12 +347,12 @@ def cpp_style_comparison_rule():
         (UInt, bool): lambda t1, v2: (
             (UInt(8), t1, t1)
             if t1.bits == 8
-            else TypeError(f"{t1}, {t2} fail binary comparison rule")
+            else TypeError(f"{t1}, {v2} fail binary comparison rule")
         ),
         (bool, UInt): lambda v1, t2: (
             (UInt(8), t2, t2)
             if t2.bits == 8
-            else TypeError(f"{t1}, {t2} fail binary comparison rule")
+            else TypeError(f"{v1}, {t2} fail binary comparison rule")
         ),
     }
     return TypingRule(

@@ -464,7 +464,11 @@ class ASTProcessor(ast.NodeTransformer):
                 attr=str(type(op).__name__),
                 ctx=ast.Load(),
             ),
-            args=[left, right],
+            args=[
+                left,
+                right,
+                self.get_ast_annotaiton(result_type, result_shape, None),
+            ],
             keywords=[],
         )
         call_node.dtype, call_node.shape = result_type, result_shape

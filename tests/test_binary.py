@@ -3,7 +3,7 @@
 
 import numpy as np
 from src.main import process
-from allo.ir.types import int32, uint16, Int, ConstExpr, UInt
+from allo.ir.types import int32, uint16, Int, ConstExpr, UInt, bool, float32
 
 
 def test_arith():
@@ -159,75 +159,199 @@ def test_broadcast():
 
 
 def test_compare():
-    def kernel1():
+    def kernel1() -> bool:
         A: int32 = 0
         B: int32 = 0
-        C: UInt(8) = A == B
-
-    s = process(kernel1)
-
-    def kernel1() -> UInt(32)[10]:
-        A: UInt(32)[10] = 0
-        B: UInt(32) = 1
-        C: UInt(32)[10] = A + B
+        C: bool = A == B
         return C
 
     s = process(kernel1)
+    assert s() == True
 
-    def kernel2():
-        A: int32 = 0
-        B: int32 = 0
-        C: UInt(8) = A != B
+    def kernel2() -> bool:
+        A: uint16 = 0
+        B: uint16 = 1
+        C: bool = A == B
+        return C
 
     s = process(kernel2)
+    assert s() == False
 
-    def kernel3():
-        A: int32 = 0
-        B: int32 = 0
-        C: UInt(8) = A > B
+    def kernel3() -> bool:
+        A: float32 = 1.0
+        B: float32 = 0
+        B += 1
+        return A == B
 
     s = process(kernel3)
+    assert s() == True
 
-    def kernel4():
+    def kernel2() -> bool:
         A: int32 = 0
         B: int32 = 0
-        C: UInt(8) = A >= B
+        C: bool = A != B
+        return C
+
+    s = process(kernel2)
+    assert s() == False
+
+    def kernel2() -> bool:
+        A: uint16 = 0
+        B: uint16 = 1
+        C: bool = A != B
+        return C
+
+    s = process(kernel2)
+    assert s() == True
+
+    def kernel3() -> bool:
+        A: float32 = 1.0
+        B: float32 = 0
+        B -= 1
+        return A != B
+
+    s = process(kernel3)
+    assert s() == True
+
+    def kernel4() -> bool:
+        A: int32 = 0
+        B: int32 = 0
+        C: bool = A > B
+        return C
 
     s = process(kernel4)
+    assert s() == False
 
-    def kernel5():
-        A: int32 = 0
-        B: int32 = 0
-        C: UInt(8) = A < B
+    def kernel4(A: uint16, B: uint16) -> bool:
+        return A > B
+
+    s = process(kernel4)
+    assert s(1, 0) == True
+    assert s(0, 1) == False
+    assert s(1, 1) == False
+
+    def kernel4(A: float32, B: float32) -> bool:
+        return A > B
+
+    s = process(kernel4)
+    assert s(1.0, 0.0) == True
+    assert s(0.0, 1.0) == False
+    assert s(1.0, 1.0) == False
+
+    def kernel4(A: int32, B: int32) -> bool:
+        return A >= B
+
+    s = process(kernel4)
+    assert s(1, 0) == True
+    assert s(0, 1) == False
+    assert s(1, 1) == True
+
+    def kernel5(A: uint16, B: uint16) -> bool:
+        return A >= B
 
     s = process(kernel5)
+    assert s(1, 0) == True
+    assert s(0, 1) == False
+    assert s(1, 1) == True
 
-    def kernel6():
-        A: int32 = 0
-        B: int32 = 0
-        C: UInt(8) = A <= B
+    def kernel5(A: float32, B: float32) -> bool:
+        return A >= B
+
+    s = process(kernel5)
+    assert s(1.0, 0.0) == True
+    assert s(0.0, 1.0) == False
+    assert s(1.0, 1.0) == True
+
+    def kernel6(A: int32, B: int32) -> bool:
+        return A <= B
 
     s = process(kernel6)
+    assert s(1, 0) == False
+    assert s(0, 1) == True
+    assert s(1, 1) == True
 
-    def kernel7():
-        A: int32 = 0
-        B: UInt(8) = 0 <= A
-        C: UInt(8) = A > 0
+    def kernel6(A: uint16, B: uint16) -> bool:
+        return A <= B
+
+    s = process(kernel6)
+    assert s(1, 0) == False
+    assert s(0, 1) == True
+    assert s(1, 1) == True
+
+    def kernel6(A: float32, B: float32) -> bool:
+        return A <= B
+
+    s = process(kernel6)
+    assert s(1.0, 0.0) == False
+    assert s(0.0, 1.0) == True
+    assert s(1.0, 1.0) == True
+
+    def kernel7(A: int32, B: int32) -> bool:
+        return A < B
 
     s = process(kernel7)
+    assert s(1, 0) == False
+    assert s(0, 1) == True
+    assert s(1, 1) == False
+    assert s(-1, 0) == True
+    assert s(0, -1) == False
+    assert s(-1, -1) == False
 
-    def kernel8():
-        C: UInt(8) = 1 >= 0
+    def kernel7(A: uint16, B: uint16) -> bool:
+        return A < B
+
+    s = process(kernel7)
+    assert s(1, 0) == False
+    assert s(0, 1) == True
+    assert s(1, 1) == False
+
+    def kernel7(A: float32, B: float32) -> bool:
+        return A < B
+
+    s = process(kernel7)
+    assert s(1.0, 0.0) == False
+    assert s(0.0, 1.0) == True
+    assert s(1.0, 1.0) == False
+    assert s(-1.0, 0.0) == True
+    assert s(0.0, -1.0) == False
+    assert s(-1.0, -1.0) == False
+
+    def kernel7() -> bool:
+        A: int32 = 0
+        B: bool = 0 <= A
+        C: bool = A > 0
+        return B == C
+
+    s = process(kernel7)
+    assert s() == False
+
+    def kernel7() -> bool:
+        A: int32 = 0
+        B: bool = 0 <= A
+        C: bool = A > 0
+        return B != C
+
+    s = process(kernel7)
+    assert s() == True
+
+    def kernel8() -> bool:
+        C: bool = 1 >= 0
+        return C
 
     s = process(kernel8)
+    assert s() == True
 
-    def kernel9():
-        C: UInt(8) = 1 < 0
+    def kernel9() -> bool:
+        C: bool = 1 < 0
+        return C
 
     s = process(kernel9)
+    assert s() == False
+
+    print("pass test_compare")
 
 
 if __name__ == "__main__":
-    test_arith()
-    test_broadcast()
-    # test_compare()
+    # test_arith()
+    # test_broadcast()
+    test_compare()

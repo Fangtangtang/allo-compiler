@@ -7,7 +7,7 @@ from collections.abc import Callable
 import ast
 from .utils import parse_ast, SymbolTable, BlockScopeGuard, Scope
 from .typing_rule import cpp_style_registry
-from allo.ir.types import AlloType, Struct, Stream, Stateful, ConstExpr, Index
+from allo.ir.types import AlloType, Float, Stream, Stateful, ConstExpr, Index
 from allo.memory import Layout
 
 
@@ -269,6 +269,10 @@ class ASTProcessor(ast.NodeTransformer):
         if isinstance(node, ast.Constant):
             # constant should be explicitly 'typed', replace the node with builtin constant construction function call
             shape = node.shape
+            if isinstance(target_dtype, Float):
+                node.value = float(node.value)
+            else:
+                node.value = int(node.value)
             node = ast.Call(
                 func=ast.Attribute(
                     value=ast.Name(id="__allo__", ctx=ast.Load()),

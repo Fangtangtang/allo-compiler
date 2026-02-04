@@ -175,35 +175,163 @@ class ModHandler(BuiltinHandler):
 
 @register_builtin_handler("Eq")
 class EqHandler(BuiltinHandler):
+    # - equal (mnemonic: `"eq"`; integer value: `0`)
+    # - float equal (`"oeq"`; integer value: `1`)
+    # - fixed equal (integer value: `0`)
     def build(self, node: ast.Call, *args):
-        raise NotImplementedError
+        args_ = node.args
+        left = self.builder.get_op_result(self.builder.visit(args_[0]))
+        right = self.builder.get_op_result(self.builder.visit(args_[1]))
+        _, is_unsigned = self.builder.build_type(args_[2]) # FIXME: should use operand type
+        if isinstance(left.type, IntegerType):
+            op = arith_d.CmpIOp(0, left, right, ip=self.builder.get_ip())
+            if is_unsigned:
+                op.attributes["unsigned"] = UnitAttr.get()
+            return op
+        if isinstance(left.type, (BF16Type, F16Type, F32Type, F64Type)):
+            return arith_d.CmpFOp(1, left, right, ip=self.builder.get_ip())
+        # fixed
+        op = allo_d.CmpFixedOp(0, left, right, ip=self.builder.get_ip())
+        if is_unsigned:
+            op.attributes["unsigned"] = UnitAttr.get()
+        return op
 
 
 @register_builtin_handler("NotEq")
 class NotEqHandler(BuiltinHandler):
+    # - not equal (mnemonic: `"ne"`; integer value: `1`)
+    # - float not equal (`"one"` ：integer value: `6`)
+    # - fixed not equal (integer value: `1`)
     def build(self, node: ast.Call, *args):
-        raise NotImplementedError
+        args_ = node.args
+        left = self.builder.get_op_result(self.builder.visit(args_[0]))
+        right = self.builder.get_op_result(self.builder.visit(args_[1]))
+        _, is_unsigned = self.builder.build_type(args_[2])
+        if isinstance(left.type, IntegerType):
+            op = arith_d.CmpIOp(1, left, right, ip=self.builder.get_ip())
+            if is_unsigned:
+                op.attributes["unsigned"] = UnitAttr.get()
+            return op
+        if isinstance(left.type, (BF16Type, F16Type, F32Type, F64Type)):
+            return arith_d.CmpFOp(6, left, right, ip=self.builder.get_ip())
+        # fixed
+        op = allo_d.CmpFixedOp(1, left, right, ip=self.builder.get_ip())
+        if is_unsigned:
+            op.attributes["unsigned"] = UnitAttr.get()
+        return op
 
 
+# Less than
 @register_builtin_handler("Lt")
 class LtHandler(BuiltinHandler):
+    # - signed less than (mnemonic: `"slt"`; integer value: `2`)
+    # - unsigned less than (mnemonic: `"ult"`; integer value: `6`)
+    # - float less than (integer value: `4`)
+    # - fixed less than (integer value: `2`)
+    # - unsigned fixed less than (integer value: `6`)
     def build(self, node: ast.Call, *args):
-        raise NotImplementedError
+        args_ = node.args
+        left = self.builder.get_op_result(self.builder.visit(args_[0]))
+        right = self.builder.get_op_result(self.builder.visit(args_[1]))
+        _, is_unsigned = self.builder.build_type(args_[2])
+        if isinstance(left.type, IntegerType):
+            if is_unsigned:
+                op = arith_d.CmpIOp(6, left, right, ip=self.builder.get_ip())
+                op.attributes["unsigned"] = UnitAttr.get()
+                return op
+            return arith_d.CmpIOp(2, left, right, ip=self.builder.get_ip())
+        if isinstance(left.type, (BF16Type, F16Type, F32Type, F64Type)):
+            return arith_d.CmpFOp(4, left, right, ip=self.builder.get_ip())
+        # fixed
+        if is_unsigned:
+            op = allo_d.allo_d.CmpFixedOp(6, left, right, ip=self.builder.get_ip())
+            op.attributes["unsigned"] = UnitAttr.get()
+            return op
+        return allo_d.allo_d.CmpFixedOp(2, left, right, ip=self.builder.get_ip())
 
 
+# Less than or equal
 @register_builtin_handler("LtE")
 class LtEHandler(BuiltinHandler):
+    # - signed less than or equal (mnemonic: `"sle"`; integer value: `3`)
+    # - unsigned less than or equal (mnemonic: `"ule"`; integer value: `7`)
+    # - float less than or equal (integer value: `5`)
+    # - fixed less than or equal (integer value: `3`)
+    # - unsigned fixed less than or equal (integer value: `7`)
     def build(self, node: ast.Call, *args):
-        raise NotImplementedError
+        args_ = node.args
+        left = self.builder.get_op_result(self.builder.visit(args_[0]))
+        right = self.builder.get_op_result(self.builder.visit(args_[1]))
+        _, is_unsigned = self.builder.build_type(args_[2])
+        if isinstance(left.type, IntegerType):
+            if is_unsigned:
+                op = arith_d.CmpIOp(7, left, right, ip=self.builder.get_ip())
+                op.attributes["unsigned"] = UnitAttr.get()
+                return op
+            return arith_d.CmpIOp(3, left, right, ip=self.builder.get_ip())
+        if isinstance(left.type, (BF16Type, F16Type, F32Type, F64Type)):
+            return arith_d.CmpFOp(5, left, right, ip=self.builder.get_ip())
+        # fixed
+        if is_unsigned:
+            op = allo_d.allo_d.CmpFixedOp(7, left, right, ip=self.builder.get_ip())
+            op.attributes["unsigned"] = UnitAttr.get()
+            return op
+        return allo_d.allo_d.CmpFixedOp(3, left, right, ip=self.builder.get_ip())
 
 
+# Greater than
 @register_builtin_handler("Gt")
 class GtHandler(BuiltinHandler):
+    # - signed greater than (mnemonic: `"sgt"`; integer value: `4`)
+    # - unsigned greater than (mnemonic: `"ugt"`; integer value: `8`)
+    # - float greater than (integer value: `2`)
+    # - fixed greater than (integer value: `4`)
+    # - unsigned fixed greater than (integer value: `8`)
     def build(self, node: ast.Call, *args):
-        raise NotImplementedError
+        args_ = node.args
+        left = self.builder.get_op_result(self.builder.visit(args_[0]))
+        right = self.builder.get_op_result(self.builder.visit(args_[1]))
+        _, is_unsigned = self.builder.build_type(args_[2])
+        if isinstance(left.type, IntegerType):
+            if is_unsigned:
+                op = arith_d.CmpIOp(8, left, right, ip=self.builder.get_ip())
+                op.attributes["unsigned"] = UnitAttr.get()
+                return op
+            return arith_d.CmpIOp(4, left, right, ip=self.builder.get_ip())
+        if isinstance(left.type, (BF16Type, F16Type, F32Type, F64Type)):
+            return arith_d.CmpFOp(2, left, right, ip=self.builder.get_ip())
+        # fixed
+        if is_unsigned:
+            op = allo_d.allo_d.CmpFixedOp(8, left, right, ip=self.builder.get_ip())
+            op.attributes["unsigned"] = UnitAttr.get()
+            return op
+        return allo_d.allo_d.CmpFixedOp(4, left, right, ip=self.builder.get_ip())
 
 
+# Greater than or equal
 @register_builtin_handler("GtE")
 class GtEHandler(BuiltinHandler):
+    # - signed greater than or equal (mnemonic: `"sge"`; integer value: `5`)
+    # - unsigned greater than or equal (mnemonic: `"uge"`; integer value: `9`)
+    # - float greater than or equal (integer value: `3`)
+    # - fixed greater than or equal (integer value: `5`)
+    # - unsigned fixed greater than or equal (integer value: `9`)
     def build(self, node: ast.Call, *args):
-        raise NotImplementedError
+        args_ = node.args
+        left = self.builder.get_op_result(self.builder.visit(args_[0]))
+        right = self.builder.get_op_result(self.builder.visit(args_[1]))
+        _, is_unsigned = self.builder.build_type(args_[2])
+        if isinstance(left.type, IntegerType):
+            if is_unsigned:
+                op = arith_d.CmpIOp(9, left, right, ip=self.builder.get_ip())
+                op.attributes["unsigned"] = UnitAttr.get()
+                return op
+            return arith_d.CmpIOp(5, left, right, ip=self.builder.get_ip())
+        if isinstance(left.type, (BF16Type, F16Type, F32Type, F64Type)):
+            return arith_d.CmpFOp(3, left, right, ip=self.builder.get_ip())
+        # fixed
+        if is_unsigned:
+            op = allo_d.allo_d.CmpFixedOp(9, left, right, ip=self.builder.get_ip())
+            op.attributes["unsigned"] = UnitAttr.get()
+            return op
+        return allo_d.allo_d.CmpFixedOp(5, left, right, ip=self.builder.get_ip())

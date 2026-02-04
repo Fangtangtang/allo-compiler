@@ -11,6 +11,7 @@ from allo.ir.types import (
     Fixed,
     UFixed,
     int32,
+    bool as allo_bool,
 )
 
 
@@ -234,123 +235,123 @@ def cpp_style_intrin_rule():
 
 
 def cpp_style_comparison_rule():
-    # the return type is always UInt(8)
+    # [NOTE]: the return type is always bool (currently using i1)
     int_rules = {
         (Int, Int): lambda t1, t2: (
-            (UInt(8), Int(max(t1.bits, t2.bits)), Int(max(t1.bits, t2.bits)))
+            (allo_bool, Int(max(t1.bits, t2.bits)), Int(max(t1.bits, t2.bits)))
             if all(t.bits in {8, 16, 32, 64} for t in (t1, t2))
             else TypeError(f"{t1}, {t2} fail binary comparison rule")
         ),
         (Int, UInt): lambda t1, t2: (
-            (UInt(8), UInt(t2.bits), UInt(t2.bits))
+            (allo_bool, UInt(t2.bits), UInt(t2.bits))
             if t2.bits >= t1.bits and all(t.bits in {8, 16, 32, 64} for t in (t1, t2))
             else (
-                (UInt(8), Int(t1.bits), Int(t1.bits))
+                (allo_bool, Int(t1.bits), Int(t1.bits))
                 if all(t.bits in {8, 16, 32, 64} for t in (t1, t2))
                 else TypeError(f"{t1}, {t2} fail binary comparison rule")
             )
         ),
         (Int, Index): lambda t1, t2: (
-            (UInt(8), Int(max(t1.bits, t2.bits)), Int(max(t1.bits, t2.bits)))
+            (allo_bool, Int(max(t1.bits, t2.bits)), Int(max(t1.bits, t2.bits)))
             if t1.bits in {8, 16, 32, 64}
             else TypeError(f"{t1}, {t2} fail binary comparison rule")
         ),
         (Int, Float): lambda t1, t2: (
-            (UInt(8), t2, t2)
+            (allo_bool, t2, t2)
             if t1.bits in {8, 16, 32, 64}
             else TypeError(f"{t1}, {t2} fail binary comparison rule")
         ),
         # python native value
-        (Int, int): lambda t1, v2: (UInt(8), t1, t1),
-        (int, Int): lambda v1, t2: (UInt(8), t2, t2),
-        (Int, float): lambda t1, v2: (UInt(8), Float(64), Float(64)),
-        (float, Int): lambda v1, t2: (UInt(8), Float(64), Float(64)),
+        (Int, int): lambda t1, v2: (allo_bool, t1, t1),
+        (int, Int): lambda v1, t2: (allo_bool, t2, t2),
+        (Int, float): lambda t1, v2: (allo_bool, Float(64), Float(64)),
+        (float, Int): lambda v1, t2: (allo_bool, Float(64), Float(64)),
     }
     uint_rules = {
         (UInt, Int): lambda t1, t2: (
-            (UInt(8), UInt(t1.bits), UInt(t1.bits))
+            (allo_bool, UInt(t1.bits), UInt(t1.bits))
             if t1.bits >= t2.bits and all(t.bits in {8, 16, 32, 64} for t in (t1, t2))
             else (
-                (UInt(8), Int(t2.bits), Int(t2.bits))
+                (allo_bool, Int(t2.bits), Int(t2.bits))
                 if all(t.bits in {8, 16, 32, 64} for t in (t1, t2))
                 else TypeError(f"{t1}, {t2} fail binary comparison rule")
             )
         ),
         (UInt, UInt): lambda t1, t2: (
-            (UInt(8), UInt(max(t1.bits, t2.bits)), UInt(max(t1.bits, t2.bits)))
+            (allo_bool, UInt(max(t1.bits, t2.bits)), UInt(max(t1.bits, t2.bits)))
             if all(t.bits in {8, 16, 32, 64} for t in (t1, t2))
             else TypeError(f"{t1}, {t2} fail binary comparison rule")
         ),
         (UInt, Index): lambda t1, t2: (
-            (UInt(8), UInt(t1.bits), UInt(t1.bits))
+            (allo_bool, UInt(t1.bits), UInt(t1.bits))
             if t1.bits >= 32 and t1.bits in {8, 16, 32, 64}
             else (
-                (UInt(8), Index(), Index())
+                (allo_bool, Index(), Index())
                 if t1.bits in {8, 16, 32, 64}
                 else TypeError(f"{t1}, {t2} fail binary comparison rule")
             )
         ),
         (UInt, Float): lambda t1, t2: (
-            (UInt(8), t2, t2)
+            (allo_bool, t2, t2)
             if t1.bits in {8, 16, 32, 64}
             else TypeError(f"{t1}, {t2} fail binary comparison rule")
         ),
         # python native value
-        (UInt, int): lambda t1, v2: (UInt(8), t1, t1),
-        (int, UInt): lambda v1, t2: (UInt(8), t2, t2),
-        (UInt, float): lambda t1, v2: (UInt(8), Float(64), Float(64)),
-        (float, UInt): lambda v1, t2: (UInt(8), Float(64), Float(64)),
+        (UInt, int): lambda t1, v2: (allo_bool, t1, t1),
+        (int, UInt): lambda v1, t2: (allo_bool, t2, t2),
+        (UInt, float): lambda t1, v2: (allo_bool, Float(64), Float(64)),
+        (float, UInt): lambda v1, t2: (allo_bool, Float(64), Float(64)),
     }
     index_rules = {
         (Index, Int): lambda t1, t2: (
-            (UInt(8), Int(max(t1.bits, t2.bits)), Int(max(t1.bits, t2.bits)))
+            (allo_bool, Int(max(t1.bits, t2.bits)), Int(max(t1.bits, t2.bits)))
             if t2.bits in {8, 16, 32, 64}
             else TypeError(f"{t1}, {t2} fail binary comparison rule")
         ),
         (Index, UInt): lambda t1, t2: (
-            (UInt(8), UInt(t2.bits), UInt(t2.bits))
+            (allo_bool, UInt(t2.bits), UInt(t2.bits))
             if t2.bits >= 32 and t2.bits in {8, 16, 32, 64}
             else (
-                (UInt(8), Index(), Index())
+                (allo_bool, Index(), Index())
                 if t2.bits in {8, 16, 32, 64}
                 else TypeError(f"{t1}, {t2} fail binary comparison rule")
             )
         ),
-        (Index, Index): lambda t1, t2: (UInt(8), t1, t2),
-        (Index, Float): lambda t1, t2: (UInt(8), t2, t2),
+        (Index, Index): lambda t1, t2: (allo_bool, t1, t2),
+        (Index, Float): lambda t1, t2: (allo_bool, t2, t2),
         # python native value
-        (Index, int): lambda t1, v2: (UInt(8), t1, t1),
-        (int, Index): lambda v1, t2: (UInt(8), t2, t2),
+        (Index, int): lambda t1, v2: (allo_bool, t1, t1),
+        (int, Index): lambda v1, t2: (allo_bool, t2, t2),
     }
     float_rules = {
         (Float, Int): lambda t1, t2: (
-            (UInt(8), t1, t1)
+            (allo_bool, t1, t1)
             if t2.bits in {8, 16, 32, 64}
             else TypeError(f"{t1}, {t2} fail binary comparison rule")
         ),
         (Float, UInt): lambda t1, t2: (
-            (UInt(8), t1, t1)
+            (allo_bool, t1, t1)
             if t2.bits in {8, 16, 32, 64}
             else TypeError(f"{t1}, {t2} fail binary comparison rule")
         ),
-        (Float, Index): lambda t1, t2: (UInt(8), t1, t1),
+        (Float, Index): lambda t1, t2: (allo_bool, t1, t1),
         (Float, Float): lambda t1, t2: (
-            (UInt(8), t1, t1) if t1.bits >= t2.bits else (UInt(8), t2, t2)
+            (allo_bool, t1, t1) if t1.bits >= t2.bits else (allo_bool, t2, t2)
         ),
         # python native value
-        (Float, int): lambda t1, v2: (UInt(8), t1, t1),
-        (int, Float): lambda v1, t2: (UInt(8), t2, t2),
-        (Float, float): lambda t1, v2: (UInt(8), t1, t1),
-        (float, Float): lambda v1, t2: (UInt(8), t2, t2),
+        (Float, int): lambda t1, v2: (allo_bool, t1, t1),
+        (int, Float): lambda v1, t2: (allo_bool, t2, t2),
+        (Float, float): lambda t1, v2: (allo_bool, t1, t1),
+        (float, Float): lambda v1, t2: (allo_bool, t2, t2),
     }
     bool_rules = {
         (UInt, bool): lambda t1, v2: (
-            (UInt(8), t1, t1)
+            (allo_bool, t1, t1)
             if t1.bits == 8
             else TypeError(f"{t1}, {v2} fail binary comparison rule")
         ),
         (bool, UInt): lambda v1, t2: (
-            (UInt(8), t2, t2)
+            (allo_bool, t2, t2)
             if t2.bits == 8
             else TypeError(f"{v1}, {t2} fail binary comparison rule")
         ),
@@ -361,7 +362,7 @@ def cpp_style_comparison_rule():
 
 
 def cpp_style_bool_op_rule():
-    cpp_style_bool = UInt(8)
+    cpp_style_bool = allo_bool
 
     def rule(*args):
         # Check if any operand is unsupported

@@ -357,7 +357,7 @@ def cpp_style_comparison_rule():
             else TypeError(f"{t1}, {t2} fail binary comparison rule")
         ),
         (Int, UInt): lambda t1, t2: (
-            (allo_bool, UInt(t2.bits), UInt(t2.bits))
+            (allo_bool, UInt(t2.bits), UInt(t2.bits), "u")
             if t2.bits >= t1.bits and all(t.bits in {8, 16, 32, 64} for t in (t1, t2))
             else (
                 (allo_bool, Int(t1.bits), Int(t1.bits))
@@ -383,7 +383,7 @@ def cpp_style_comparison_rule():
     }
     uint_rules = {
         (UInt, Int): lambda t1, t2: (
-            (allo_bool, UInt(t1.bits), UInt(t1.bits))
+            (allo_bool, UInt(t1.bits), UInt(t1.bits), "u")
             if t1.bits >= t2.bits and all(t.bits in {8, 16, 32, 64} for t in (t1, t2))
             else (
                 (allo_bool, Int(t2.bits), Int(t2.bits))
@@ -392,12 +392,21 @@ def cpp_style_comparison_rule():
             )
         ),
         (UInt, UInt): lambda t1, t2: (
-            (allo_bool, UInt(max(t1.bits, t2.bits)), UInt(max(t1.bits, t2.bits)))
-            if all(t.bits in {8, 16, 32, 64} for t in (t1, t2))
-            else TypeError(f"{t1}, {t2} fail binary comparison rule")
+            (allo_bool, allo_bool, allo_bool, "u")
+            if t1 == t2 == allo_bool
+            else (
+                (
+                    allo_bool,
+                    UInt(max(t1.bits, t2.bits)),
+                    UInt(max(t1.bits, t2.bits)),
+                    "u",
+                )
+                if all(t.bits in {8, 16, 32, 64} for t in (t1, t2))
+                else TypeError(f"{t1}, {t2} fail binary comparison rule")
+            )
         ),
         (UInt, Index): lambda t1, t2: (
-            (allo_bool, UInt(t1.bits), UInt(t1.bits))
+            (allo_bool, UInt(t1.bits), UInt(t1.bits), "u")
             if t1.bits >= 32 and t1.bits in {8, 16, 32, 64}
             else (
                 (allo_bool, Index(), Index())
@@ -411,8 +420,8 @@ def cpp_style_comparison_rule():
             else TypeError(f"{t1}, {t2} fail binary comparison rule")
         ),
         # python native value
-        (UInt, int): lambda t1, v2: (allo_bool, t1, t1),
-        (int, UInt): lambda v1, t2: (allo_bool, t2, t2),
+        (UInt, int): lambda t1, v2: (allo_bool, t1, t1, "u"),
+        (int, UInt): lambda v1, t2: (allo_bool, t2, t2, "u"),
         (UInt, float): lambda t1, v2: (allo_bool, Float(64), Float(64)),
         (float, UInt): lambda v1, t2: (allo_bool, Float(64), Float(64)),
     }
@@ -423,7 +432,7 @@ def cpp_style_comparison_rule():
             else TypeError(f"{t1}, {t2} fail binary comparison rule")
         ),
         (Index, UInt): lambda t1, t2: (
-            (allo_bool, UInt(t2.bits), UInt(t2.bits))
+            (allo_bool, UInt(t2.bits), UInt(t2.bits), "u")
             if t2.bits >= 32 and t2.bits in {8, 16, 32, 64}
             else (
                 (allo_bool, Index(), Index())
@@ -460,13 +469,13 @@ def cpp_style_comparison_rule():
     }
     bool_rules = {
         (UInt, bool): lambda t1, v2: (
-            (allo_bool, t1, t1)
-            if t1.bits == 8
+            (allo_bool, t1, t1, "u")
+            if t1.bits == 1
             else TypeError(f"{t1}, {v2} fail binary comparison rule")
         ),
         (bool, UInt): lambda v1, t2: (
-            (allo_bool, t2, t2)
-            if t2.bits == 8
+            (allo_bool, t2, t2, "u")
+            if t2.bits == 1
             else TypeError(f"{v1}, {t2} fail binary comparison rule")
         ),
     }
@@ -487,9 +496,7 @@ class EqHandler(BuiltinHandler):
         args_ = node.args
         left = self.builder.get_op_result(self.builder.visit(args_[0]))
         right = self.builder.get_op_result(self.builder.visit(args_[1]))
-        _, is_unsigned = self.builder.build_type(
-            args_[2]
-        )  # FIXME: should use operand type
+        is_unsigned = len(args_) == 4  # with extra 'unsigned' annotation "u"
         if isinstance(left.type, IntegerType):
             op = arith_d.CmpIOp(0, left, right, ip=self.builder.get_ip())
             if is_unsigned:
@@ -517,7 +524,7 @@ class NotEqHandler(BuiltinHandler):
         args_ = node.args
         left = self.builder.get_op_result(self.builder.visit(args_[0]))
         right = self.builder.get_op_result(self.builder.visit(args_[1]))
-        _, is_unsigned = self.builder.build_type(args_[2])
+        is_unsigned = len(args_) == 4  # with extra 'unsigned' annotation "u"
         if isinstance(left.type, IntegerType):
             op = arith_d.CmpIOp(1, left, right, ip=self.builder.get_ip())
             if is_unsigned:
@@ -548,7 +555,7 @@ class LtHandler(BuiltinHandler):
         args_ = node.args
         left = self.builder.get_op_result(self.builder.visit(args_[0]))
         right = self.builder.get_op_result(self.builder.visit(args_[1]))
-        _, is_unsigned = self.builder.build_type(args_[2])
+        is_unsigned = len(args_) == 4  # with extra 'unsigned' annotation "u"
         if isinstance(left.type, IntegerType):
             if is_unsigned:
                 op = arith_d.CmpIOp(6, left, right, ip=self.builder.get_ip())
@@ -581,7 +588,7 @@ class LtEHandler(BuiltinHandler):
         args_ = node.args
         left = self.builder.get_op_result(self.builder.visit(args_[0]))
         right = self.builder.get_op_result(self.builder.visit(args_[1]))
-        _, is_unsigned = self.builder.build_type(args_[2])
+        is_unsigned = len(args_) == 4  # with extra 'unsigned' annotation "u"
         if isinstance(left.type, IntegerType):
             if is_unsigned:
                 op = arith_d.CmpIOp(7, left, right, ip=self.builder.get_ip())
@@ -614,7 +621,7 @@ class GtHandler(BuiltinHandler):
         args_ = node.args
         left = self.builder.get_op_result(self.builder.visit(args_[0]))
         right = self.builder.get_op_result(self.builder.visit(args_[1]))
-        _, is_unsigned = self.builder.build_type(args_[2])
+        is_unsigned = len(args_) == 4  # with extra 'unsigned' annotation "u"
         if isinstance(left.type, IntegerType):
             if is_unsigned:
                 op = arith_d.CmpIOp(8, left, right, ip=self.builder.get_ip())
@@ -647,7 +654,7 @@ class GtEHandler(BuiltinHandler):
         args_ = node.args
         left = self.builder.get_op_result(self.builder.visit(args_[0]))
         right = self.builder.get_op_result(self.builder.visit(args_[1]))
-        _, is_unsigned = self.builder.build_type(args_[2])
+        is_unsigned = len(args_) == 4  # with extra 'unsigned' annotation "u"
         if isinstance(left.type, IntegerType):
             if is_unsigned:
                 op = arith_d.CmpIOp(9, left, right, ip=self.builder.get_ip())

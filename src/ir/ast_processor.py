@@ -448,10 +448,10 @@ class ASTProcessor(ast.NodeTransformer):
         arg1 = getattr(left, "dtype", getattr(left, "value", None))
         arg2 = getattr(right, "dtype", getattr(right, "value", None))
         try:
-            print(str(type(op).__name__))
-            result_type, l_type, r_type = BUILTIN_HANDLERS[
+            result_type, l_type, r_type, *others = BUILTIN_HANDLERS[
                 str(type(op).__name__)
             ].infer(arg1, arg2)
+            print(arg1, arg2)
         except TypeError as e:
             raise TypeError(f"Type error in binary operation ({op}): {e}")
         left = self.visit_cast(left, l_type)
@@ -468,18 +468,20 @@ class ASTProcessor(ast.NodeTransformer):
             right = self.visit_broadcast(right, right.dtype, result_shape)
         else:
             result_shape = lhs_shape
-
+        args = [left, right, self.get_ast_annotaiton(result_type, result_shape, None)]
+        for extra in others:
+            if isinstance(extra, str):
+                print(extra)
+                args.append(ast.Name(id=extra, ctx=ast.Load()))
+            else:
+                raise NotImplementedError
         call_node = ast.Call(
             func=ast.Attribute(
                 value=ast.Name(id="__allo__", ctx=ast.Load()),
                 attr=str(type(op).__name__),
                 ctx=ast.Load(),
             ),
-            args=[
-                left,
-                right,
-                self.get_ast_annotaiton(result_type, result_shape, None),
-            ],
+            args=args,
             keywords=[],
         )
         call_node.dtype, call_node.shape = result_type, result_shape

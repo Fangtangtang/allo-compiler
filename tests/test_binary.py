@@ -354,4 +354,4 @@ def test_compare():
 if __name__ == "__main__":
     test_arith()
     test_broadcast()
-    # test_compare()
+    test_compare()

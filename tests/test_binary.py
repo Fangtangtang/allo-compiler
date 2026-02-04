@@ -1,6 +1,7 @@
 # Copyright Allo authors. All Rights Reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import numpy as np
 from src.main import process
 from allo.ir.types import int32, uint16, Int, ConstExpr, UInt
 
@@ -120,21 +121,41 @@ def test_broadcast():
         return C
 
     s = process(kernel1)
+    np_A = np.zeros((10,), dtype=np.int32)
+    np_B = np_A + 1
+    assert np.array_equal(s(), np_B)
+
+    def kernel1(A: int32[10]) -> int32[10]:
+        B: int32 = 1
+        C: int32[10] = A + B
+        return C
+
+    s = process(kernel1)
+    np_A = np.random.randint(0, 10, (10,), dtype=np.int32)
+    np_B = np_A + 1
+    assert np.array_equal(s(np_A), np_B)
 
     def kernel2() -> int32[10]:
         A: int32[10] = 0
         B: int32[1] = 1
-        C: int32[10] = A + B
+        C: int32[10] = A + B[0]
         return C
 
     s = process(kernel2)
+    np_A = np.zeros((10,), dtype=np.int32)
+    np_B = np_A + 1
+    assert np.array_equal(s(), np_B)
 
-    def kernel3() -> int32[10]:
-        A: int32[10] = 0
+    def kernel3(A: int32[10]) -> int32[10]:
         C: int32[10] = A + 1
         return C
 
     s = process(kernel3)
+    np_A = np.random.randint(0, 10, (10,), dtype=np.int32)
+    np_B = np_A + 1
+    assert np.array_equal(s(np_A), np_B)
+
+    print("pass test_broadcast")
 
 
 def test_compare():
@@ -208,5 +229,5 @@ def test_compare():
 
 if __name__ == "__main__":
     test_arith()
-    # test_broadcast()
+    test_broadcast()
     # test_compare()

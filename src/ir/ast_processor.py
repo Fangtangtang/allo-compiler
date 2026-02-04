@@ -236,13 +236,16 @@ class ASTProcessor(ast.NodeTransformer):
         assert shape is not None and len(shape) <= len(target_shape)
         if shape == target_shape:
             return node
-        padded_shape = [1] * (len(target_shape) - len(shape)) + list(shape)
+        # FIXME: tentative, using -1 as placeholder to distinguish from a dim with size is 1
+        padded_shape = [-1] * (len(target_shape) - len(shape)) + list(shape)
         dims = []
         for idx, (s, t) in enumerate(zip(padded_shape, target_shape)):
             if s != t:
-                if s != 1:
+                if s != 1 and s != -1:
                     raise ValueError(f"shape mismatch: {shape} vs {target_shape}")
                 dims.append(idx)
+        # FIXME: currently use linalg.broadcast for lowering, can only 'insert' dim
+        assert len(target_shape) - len(shape) == len(dims), "not a semantic constraint"
         call_node = ast.Call(
             func=ast.Attribute(
                 value=ast.Name(id="__allo__", ctx=ast.Load()),

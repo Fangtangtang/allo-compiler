@@ -378,11 +378,6 @@ class IRBuilder(ast.NodeVisitor):
             func_d.ReturnOp([], ip=self.get_ip())
             return
         ret = self.get_op_result(self.visit(node.value))
-
-        print(
-            self.current_func.type.results[0],
-            self.current_func.type.results[0] == ret.type,
-        )
         if (
             isinstance(ret.type, MemRefType)
             and ret.type != self.current_func.type.results[0]

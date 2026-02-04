@@ -31,10 +31,12 @@ The compilation process is divided into two distinct phases to separate concerns
 
 - **`typing_rule.py`**:
   - Defines type inference guidelines, specifically "CPP-style" rules.
-  - Handles result type deduction for arithmetic, comparison, and boolean operations based on operand types.
+  - Handles result type deduction for boolean operations based on operand types.
 
 - **`utils.py`**:
   - Provides utility classes such as `SymbolTable` and `Scope` to manage identifier resolution during compilation.
 
 - **`builtin/`**:
   - A comprehensive library for handling builtin functions and operations, designed to be extensible.
+  - Each builtin handler encapsulates its own type inference logic via the `infer` method.
+  - Each builtin handler construct the corresponding MLIR operations via the `build` method.

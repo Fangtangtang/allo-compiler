@@ -13,6 +13,15 @@ def test_vadd():
             C[i] = A[i] + B[i]
 
     s = process(vadd)
+    np_A = np.random.rand(32).astype(np.float32)
+    np_B = np.random.rand(32).astype(np.float32)
+    np_C = np.zeros((32,), dtype=np.float32)
+    vadd(np_A, np_B, np_C)
+    np_D = np.zeros((32,), dtype=np.float32)
+    s(np_A, np_B, np_D)
+    np.testing.assert_allclose(np_C, np_D)
+
+    print("pass test_vadd")
 
 
 def test_range_for():

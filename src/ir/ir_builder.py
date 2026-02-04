@@ -178,8 +178,18 @@ class IRBuilder(ast.NodeVisitor):
     def get_affine_expr(self, node: ast.expr):
         if isinstance(node, ast.Constant):
             return AffineConstantExpr.get(node.value), int(node.value)
+        if isinstance(node, ast.Name):
+            var = self.get_symbol(node.id)
+            if isinstance(var, MockArg) and var.is_affine:
+                return AffineExpr.get_dim(0), var.result
         # TODO: other cases
         return None, None
+
+    def get_affine_attr(self, node: ast.expr):
+        expr, _ = self.get_affine_expr(node)
+        if expr is None:
+            return None
+        return AffineMap.get(dim_count=0, symbol_count=0, exprs=[expr])
 
     def visit_Subscript(self, node: ast.Subscript, val=None):
         base = self.get_op_result(self.visit(node.value))
@@ -187,6 +197,7 @@ class IRBuilder(ast.NodeVisitor):
         layout = base.type.layout
         elts = node.slice.elts if isinstance(node.slice, ast.Tuple) else [node.slice]
         new_indices, dynamic_offset, offsets, sizes, strides = [], [], [], [], []
+        dim_cnt = 0
         for elt in elts:
             aff, offset = self.get_affine_expr(elt)
             if aff is not None:
@@ -194,8 +205,9 @@ class IRBuilder(ast.NodeVisitor):
                 if isinstance(offset, int):
                     offsets.append(offset)
                 else:
-                    dynamic_offset.append(offset)
+                    dynamic_offset.append(offset)  # FIXME: tentative
                     offsets.append(ShapedType.get_dynamic_stride_or_offset())
+                    dim_cnt += 1
                 sizes.append(1)
                 strides.append(1)
             else:
@@ -205,10 +217,11 @@ class IRBuilder(ast.NodeVisitor):
                 sizes.append((upper - lower) // step)
                 strides.append(step)
         if len(new_indices) == len(shape):  # access element
-            # FIXME: dim_count, ivs
-            affine_map = AffineMap.get(dim_count=0, symbol_count=0, exprs=new_indices)
+            affine_map = AffineMap.get(
+                dim_count=dim_cnt, symbol_count=0, exprs=new_indices
+            )
             affine_attr = AffineMapAttr.get(affine_map)
-            ivs = []
+            ivs = dynamic_offset  # FIXME: dim_count, ivs
             if isinstance(node.ctx, ast.Load):
                 op = affine_d.AffineLoadOp(
                     base.type.element_type,
@@ -317,16 +330,32 @@ class IRBuilder(ast.NodeVisitor):
     def visit_For(self, node: ast.For):
         # TODO: should use higher-level affine loop if possible
         args = node.iter.args
-        lb = self.get_op_result(self.visit(args[0]))
-        rb = self.get_op_result(self.visit(args[1]))
-        step = self.get_op_result(self.visit(args[2]))
-        for_op = scf_d.ForOp(lb, rb, step, ip=self.get_ip())
-        scf_d.YieldOp([], ip=InsertionPoint(for_op.body))
-        
+        lb = self.get_affine_attr(args[0])
+        ub = self.get_affine_attr(args[1])
+        use_affine_loop = lb is not None and ub is not None
+        if use_affine_loop:
+            step = args[2].value
+            for_op = affine_d.AffineForOp(
+                lower_bound=lb,
+                upper_bound=ub,
+                step=step,
+                iter_args=[],
+                lower_bound_operands=[],
+                upper_bound_operands=[],
+                ip=self.get_ip(),
+            )
+            affine_d.AffineYieldOp([], ip=InsertionPoint(for_op.body))
+        else:
+            lb = self.get_op_result(self.visit(args[0]))
+            rb = self.get_op_result(self.visit(args[1]))
+            step = self.get_op_result(self.visit(args[2]))
+            for_op = scf_d.ForOp(lb, rb, step, ip=self.get_ip())
+            scf_d.YieldOp([], ip=InsertionPoint(for_op.body))
+
         with self.block_scope_guard():
             self.put_var(
                 name=node.target.id,
-                val=for_op.induction_variable,
+                val=MockArg(for_op.induction_variable, use_affine_loop),
             )
             self.set_ip(for_op.body.operations[0])
             for stmt in node.body:

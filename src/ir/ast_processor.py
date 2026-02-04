@@ -352,7 +352,7 @@ class ASTProcessor(ast.NodeTransformer):
                         shape.append(size)
                 elif not isinstance(
                     elt_, ast.Constant
-                ):  # let constant be a special case
+                ):  # let constant be a special case (FIXME: merge)
                     elt_ = self.visit_cast(elt_, Index())
                 new_elts.append(elt_)
             shape.extend(value.shape[len(elts) :])
@@ -645,11 +645,19 @@ class ASTProcessor(ast.NodeTransformer):
                 node.target.dtype = Index()
                 self.put_var(node.target.id, node.target)
                 ivs = node.iter.args
-                ivs_ = [self.visit(iv) for iv in ivs]
+                ivs_ = []
+                for iv in ivs:
+                    iv_ = self.visit(iv)
+                    if not isinstance(
+                        iv_, ast.Constant
+                    ):  # let constant be a special case (FIXME: merge)
+                        iv_ = self.visit_cast(iv_, Index())
+                    ivs_.append(iv_)
                 if len(ivs_) == 1:
                     ivs_.insert(0, ast.Constant(value=0))
                 if len(ivs_) == 2:
                     ivs_.append(ast.Constant(value=1))
+                assert isinstance(ivs_[-1], ast.Constant)
                 node.iter.args = ivs_
                 new_body = []
                 for stmt in node.body:

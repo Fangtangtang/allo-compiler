@@ -9,6 +9,7 @@ from .utils import parse_ast, SymbolTable, BlockScopeGuard, Scope
 from .typing_rule import cpp_style_registry
 from allo.ir.types import AlloType, Float, Stream, Stateful, ConstExpr, Index
 from allo.memory import Layout
+from .builtin import BUILTIN_HANDLERS
 
 
 class ASTProcessor(ast.NodeTransformer):
@@ -447,7 +448,10 @@ class ASTProcessor(ast.NodeTransformer):
         arg1 = getattr(left, "dtype", getattr(left, "value", None))
         arg2 = getattr(right, "dtype", getattr(right, "value", None))
         try:
-            result_type, l_type, r_type = cpp_style_registry[type(op)](arg1, arg2)
+            print(str(type(op).__name__))
+            result_type, l_type, r_type = BUILTIN_HANDLERS[
+                str(type(op).__name__)
+            ].infer(arg1, arg2)
         except TypeError as e:
             raise TypeError(f"Type error in binary operation ({op}): {e}")
         left = self.visit_cast(left, l_type)
@@ -521,6 +525,7 @@ class ASTProcessor(ast.NodeTransformer):
             arg_dtypes.append(arg_dtype)
 
         try:
+            # FIXME: perhaps define a handler for this infer as well?
             typing_result = cpp_style_registry[type(node.op)](*arg_dtypes)
             res_type = typing_result[0]
             for i, val in enumerate(node.values):

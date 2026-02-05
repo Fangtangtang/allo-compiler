@@ -113,7 +113,7 @@ def test_branch():
 
 def test_branch_complicate():
     def kernel1() -> int32:
-        A: int32 = 0
+        A: int32 = 2
         B: int32 = 0
         if A > B and 1 == 1:
             B = A
@@ -122,34 +122,39 @@ def test_branch_complicate():
         return B
 
     s = process(kernel1)
+    assert s() == 1
 
     def kernel2() -> int32:
         A: int32 = 0
-        B: int32 = 0
+        B: int32 = -1
         if A > B:
             B = A
         elif A < B or B == 0:
             B = B
         else:
-            B = 0
+            B = 1
         return B
 
     s = process(kernel2)
+    assert s() == 0
 
     def kernel3() -> int32:
-        A: int32 = 0
+        A: int32 = -1
         B: int32 = 0
         if True and A > B:
             B = A
         elif A < B or B == 0 and False:
-            B = B
+            B = B + 1
         else:
             B = 0
         return B
 
     s = process(kernel3)
+    assert s() == 1
+
+    print("pass test_branch_complicate")
 
 
 if __name__ == "__main__":
     test_branch()
-    # test_branch_complicate()
+    test_branch_complicate()

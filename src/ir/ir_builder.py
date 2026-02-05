@@ -72,7 +72,7 @@ class IRBuilder(ast.NodeVisitor):
         """
         method = "visit_" + node.__class__.__name__
         visitor = getattr(self, method, None)
-        assert visitor is not None
+        assert visitor is not None, f"{method} not found"
         return visitor(node)
 
     def block_scope_guard(self):
@@ -167,9 +167,13 @@ class IRBuilder(ast.NodeVisitor):
 
     def visit_Constant(self, node: ast.Constant):
         # FIXME: tentative
-        if isinstance(node.value, int):
+        if type(node.value) is int:
             return arith_d.ConstantOp(
                 arith_d.IndexType.get(), node.value, ip=self.get_ip()
+            )
+        if type(node.value) is bool:
+            return arith_d.ConstantOp(
+                arith_d.IntegerType.get_signless(1), node.value, ip=self.get_ip()
             )
         raise NotImplementedError
 
@@ -294,7 +298,22 @@ class IRBuilder(ast.NodeVisitor):
         raise NotImplementedError
 
     def visit_BoolOp(self, node: ast.BoolOp):
-        raise NotImplementedError
+        opcls = {
+            ast.And: arith_d.AndIOp,
+            ast.Or: arith_d.OrIOp,
+        }.get(type(node.op))
+        result = opcls(
+            self.get_op_result(self.visit(node.values[0])),
+            self.get_op_result(self.visit(node.values[1])),
+            ip=self.get_ip(),
+        )
+        for i in range(2, len(node.values)):
+            result = opcls(
+                result.result,
+                self.get_op_result(self.visit(node.values[i])),
+                ip=self.get_ip(),
+            )
+        return result
 
     def visit_AnnAssign(self, node: ast.AnnAssign):
         value = (
@@ -325,7 +344,6 @@ class IRBuilder(ast.NodeVisitor):
         else:
             # scalar
             affine_map = AffineMap.get(dim_count=0, symbol_count=0, exprs=[])
-            print(value, target)
             affine_d.AffineStoreOp(
                 value, target, [], AffineMapAttr.get(affine_map), ip=self.get_ip()
             )

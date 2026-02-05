@@ -519,11 +519,13 @@ class ASTProcessor(ast.NodeTransformer):
     def visit_BoolOp(self, node: ast.BoolOp):
         # e.g., x and y, x or y
         arg_dtypes = []
+        new_value = []
         for value in node.values:
             val = self.visit(value)
             arg_dtype = getattr(val, "dtype", getattr(val, "value", None))
             arg_dtypes.append(arg_dtype)
-
+            new_value.append(val)
+        node.values = new_value
         try:
             # FIXME: perhaps define a handler for this infer as well?
             typing_result = cpp_style_registry[type(node.op)](*arg_dtypes)

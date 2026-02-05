@@ -42,6 +42,16 @@ def test_branch():
 
     s = process(kernel3)
 
+    def kernel4() -> bool:
+        A: bool = 1 == 1
+        B: bool
+        if not A:
+            B: bool = not False
+        else:
+            B: bool = not True
+        return B
+
+    s = process(kernel4)
 
 def test_branch_complicate():
     def kernel1() -> int32:

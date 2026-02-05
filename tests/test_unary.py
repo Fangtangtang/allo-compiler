@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from src.main import process
+import numpy as np
 from allo.ir.types import int32, Int, ConstExpr, bool
 
 
@@ -12,6 +13,7 @@ def test_unary():
         return B
 
     s = process(kernel1)
+    assert s() == 1
 
     def kernel2() -> int32:
         A: int32 = 1
@@ -19,32 +21,45 @@ def test_unary():
         return B
 
     s = process(kernel2)
+    assert s() == -1
 
     def kernel3() -> int32[10]:
-        A: int32[10] = 0
+        A: int32[10] = 1
         B: int32[10] = -A
         return B
 
     s = process(kernel3)
+    assert np.array_equal(s(), np.full((10,), -1))
+
+    def kernel3(A: int32[10]) -> int32[10]:
+        B: int32[10] = -A
+        return B
+
+    s = process(kernel3)
+    np_A = np.random.randint(0, 10, 10)
+    assert np.array_equal(s(np_A), -np_A)
 
     def kernel4() -> int32[10]:
-        A: int32[10] = 0
+        A: int32[10] = 1
         B: int32[10] = +A
         return B
 
     s = process(kernel4)
+    assert np.array_equal(s(), np.full((10,), 1))
 
     def kernel5() -> int32:
         A: int32 = +1
         return A
 
     s = process(kernel5)
+    assert s() == 1
 
     def kernel6() -> int32:
         A: int32 = -1
         return A
 
     s = process(kernel6)
+    assert s() == -1
 
     def kernel7() -> int32:
         A: int32 = 1
@@ -54,6 +69,7 @@ def test_unary():
         return A + B + C
 
     s = process(kernel7)
+    assert s() == -1
 
     def kernel8() -> int32[10]:
         A: int32[10] = +1
@@ -62,7 +78,9 @@ def test_unary():
         return A + B
 
     s = process(kernel8)
+    assert np.array_equal(s(), np.full((10,), -2))
 
+    print("pass test_unary")
 
 def test_unary_not():
     def kernel1() -> bool:
@@ -71,13 +89,15 @@ def test_unary_not():
         return B
 
     s = process(kernel1)
+    assert s() == False
 
     def kernel2() -> bool:
         A: bool = 1 == 1
-        B: bool = not A == 1
+        B: bool = not A == True
         return B
 
     s = process(kernel2)
+    assert s() == False
 
     def kernel3() -> bool:
         A: bool = 1 == 1
@@ -85,18 +105,17 @@ def test_unary_not():
         return B
 
     s = process(kernel3)
+    assert s() == False
 
     def kernel4() -> bool:
         A: bool = 1 == 1
-        B: bool
-        if not A:
-            B: bool = not False
-        else:
-            B: bool = not True
+        B: bool = not False
         return B
 
     s = process(kernel4)
+    assert s() == True
 
+    print("pass test_unary_not")
 
 if __name__ == "__main__":
     test_unary()

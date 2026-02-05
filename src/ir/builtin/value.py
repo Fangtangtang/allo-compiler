@@ -13,8 +13,9 @@ from allo.ir.types import (
     UInt,
     Fixed,
     UFixed,
-    int32,
     bool as allo_bool,
+    float16,
+    bfloat16,
 )
 
 
@@ -82,6 +83,13 @@ class CastHandler(BuiltinHandler):
             (UFixed, Index): "cast_fixed_to_index",
         }
         src_type, res_type = args[0], args[1]
+        # [NOTE]: float16 <-> bfloat16 not supported
+        assert not (
+            src_type == float16 and res_type == bfloat16
+        ), "f16 -> bf16 not supported"
+        assert not (
+            src_type == bfloat16 and res_type == float16
+        ), "bf16 -> f16 not supported"
         if (type(src_type), type(res_type)) in cast_map:
             handler_name = cast_map[(type(src_type), type(res_type))]
         else:

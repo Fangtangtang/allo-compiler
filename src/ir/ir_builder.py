@@ -23,7 +23,6 @@ from allo._mlir.ir import (
     FunctionType,
     MemRefType,
     IndexType,
-    RankedTensorType,
     ShapedType,
     IntegerType,
     F32Type,
@@ -46,8 +45,7 @@ from allo._mlir.ir import (
     StridedLayoutAttr,
 )
 from allo.utils import register_dialect
-from allo.ir.types import AlloType
-from allo.ir.utils import MockArg, MockScalar, MockConstant, MockBuffer
+from allo.ir.utils import MockArg, MockScalar, MockBuffer
 from .utils import SymbolTable, BlockScopeGuard, Scope
 from .builtin import BUILTIN_HANDLERS
 

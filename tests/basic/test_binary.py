@@ -3,7 +3,7 @@
 
 import numpy as np
 from src.main import process
-from allo.ir.types import int32, uint16, Int, ConstExpr, UInt, bool, float32
+from allo.ir.types import int32, uint16, bool, float32
 
 
 def test_arith():

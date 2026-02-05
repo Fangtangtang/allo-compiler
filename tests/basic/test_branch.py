@@ -4,7 +4,7 @@
 
 from src.main import process
 import numpy as np
-from allo.ir.types import int32, UInt, ConstExpr, bool
+from allo.ir.types import int32, bool
 
 
 def test_branch():

@@ -126,6 +126,5 @@ class TypingRule:
                 f"Typing rule is not defined with input types {itype_classes}"
             )
         rule = self.inf_rules[itype_classes]
-        print(args)
         res_type = rule(*args)
         return res_type

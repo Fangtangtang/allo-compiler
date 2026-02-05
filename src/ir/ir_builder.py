@@ -318,12 +318,14 @@ class IRBuilder(ast.NodeVisitor):
             target = self.visit(node.target)
         if value is None:
             return
+        target = self.get_op_result(target)
         if isinstance(value.type, MemRefType):
             # tensor
             memref_d.CopyOp(value, target, ip=self.get_ip())
         else:
             # scalar
             affine_map = AffineMap.get(dim_count=0, symbol_count=0, exprs=[])
+            print(value, target)
             affine_d.AffineStoreOp(
                 value, target, [], AffineMapAttr.get(affine_map), ip=self.get_ip()
             )
@@ -368,7 +370,36 @@ class IRBuilder(ast.NodeVisitor):
         raise NotImplementedError
 
     def visit_If(self, node: ast.If):
-        raise NotImplementedError
+        # TODO: should use higher-level affine loop if possible
+        if isinstance(node.test, ast.Constant):  # simple DCE
+            if node.test.value:
+                with self.block_scope_guard():
+                    for stmt in node.body:
+                        self.visit(stmt)
+            else:
+                with self.block_scope_guard():
+                    for stmt in node.orelse:
+                        self.visit(stmt)
+            return
+        if_op = scf_d.IfOp(
+            self.get_op_result(self.visit(node.test)),
+            ip=self.get_ip(),
+            has_else=len(node.orelse),
+        )
+        self.set_ip(if_op.then_block)
+        with self.block_scope_guard():
+            for stmt in node.body:
+                self.visit(stmt)
+            scf_d.YieldOp([], ip=self.get_ip())
+        self.pop_ip()
+        if len(node.orelse) > 0:
+            else_block = if_op.elseRegion.blocks[0]
+            self.set_ip(else_block)
+            with self.block_scope_guard():
+                for stmt in node.orelse:
+                    self.visit(stmt)
+                scf_d.YieldOp([], ip=self.get_ip())
+            self.pop_ip()
 
     def visit_IfExp(self, node: ast.IfExp):
         raise NotImplementedError

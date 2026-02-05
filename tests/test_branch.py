@@ -3,7 +3,8 @@
 
 
 from src.main import process
-from allo.ir.types import int32, UInt, ConstExpr
+import numpy as np
+from allo.ir.types import int32, UInt, ConstExpr, bool
 
 
 def test_branch():
@@ -17,10 +18,23 @@ def test_branch():
         return B
 
     s = process(kernel1)
+    assert s() == 1
+
+    def kernel1(A: int32, B: int32[1]) -> int32:
+        if A > B[0]:
+            B[0] = A
+        if False:
+            B[0] = 1
+        return B[0]
+
+    s = process(kernel1)
+    assert s(1, np.array([0], dtype=np.int32)) == 1
+    assert s(0, np.array([1], dtype=np.int32)) == 1
+    assert s(1, np.array([2], dtype=np.int32)) == 2
 
     def kernel2() -> int32:
         A: int32 = 0
-        B: int32 = 0
+        B: int32 = 1
         if A > B:
             B = A
         else:
@@ -28,9 +42,22 @@ def test_branch():
         return B
 
     s = process(kernel2)
+    assert s() == 1
+
+    def kernel2(A: int32, B: int32[1]) -> int32:
+        if A > B[0]:
+            B[0] = A
+        else:
+            B[0] = B[0]
+        return B[0]
+
+    s = process(kernel2)
+    assert s(1, np.array([0], dtype=np.int32)) == 1
+    assert s(0, np.array([1], dtype=np.int32)) == 1
+    assert s(1, np.array([2], dtype=np.int32)) == 2
 
     def kernel3() -> int32:
-        A: int32 = 0
+        A: int32 = 1
         B: int32 = 0
         if A > B:
             B = A
@@ -41,6 +68,21 @@ def test_branch():
         return B
 
     s = process(kernel3)
+    assert s() == 1
+
+    def kernel3(A: int32, B: int32[1]) -> int32:
+        if A > B[0]:
+            B[0] = A
+        elif A < B[0]:
+            B[0] = B[0]
+        else:
+            B[0] = 0
+        return B[0]
+
+    s = process(kernel3)
+    assert s(1, np.array([0], dtype=np.int32)) == 1
+    assert s(0, np.array([1], dtype=np.int32)) == 1
+    assert s(1, np.array([2], dtype=np.int32)) == 2
 
     def kernel4() -> bool:
         A: bool = 1 == 1
@@ -52,6 +94,22 @@ def test_branch():
         return B
 
     s = process(kernel4)
+    assert s() == False
+
+    def kernel4(A: bool) -> bool:
+        B: bool
+        if not A:
+            B: bool = not False
+        else:
+            B: bool = not True
+        return B
+
+    s = process(kernel4)
+    assert s(True) == False
+    assert s(False) == True
+
+    print("pass test_branch")
+
 
 def test_branch_complicate():
     def kernel1() -> int32:
@@ -94,4 +152,4 @@ def test_branch_complicate():
 
 if __name__ == "__main__":
     test_branch()
-    test_branch_complicate()
+    # test_branch_complicate()

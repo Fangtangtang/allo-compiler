@@ -451,7 +451,6 @@ class ASTProcessor(ast.NodeTransformer):
             result_type, l_type, r_type, *others = BUILTIN_HANDLERS[
                 str(type(op).__name__)
             ].infer(arg1, arg2)
-            print(arg1, arg2)
         except TypeError as e:
             raise TypeError(f"Type error in binary operation ({op}): {e}")
         left = self.visit_cast(left, l_type)
@@ -471,7 +470,6 @@ class ASTProcessor(ast.NodeTransformer):
         args = [left, right, self.get_ast_annotaiton(result_type, result_shape, None)]
         for extra in others:
             if isinstance(extra, str):
-                print(extra)
                 args.append(ast.Name(id=extra, ctx=ast.Load()))
             else:
                 raise NotImplementedError
@@ -577,6 +575,9 @@ class ASTProcessor(ast.NodeTransformer):
                     assert not getattr(
                         target_.dtype, "constexpr", False
                     ), "Cannot reassign constants."
+                    assert not getattr(
+                        target_, "immutable", False
+                    ), "Cannot reassign scalar arguments"
                     target.dtype, target.shape = target_.dtype, target_.shape
             else:
                 # e.g., A[i] = 1
@@ -590,6 +591,7 @@ class ASTProcessor(ast.NodeTransformer):
         rhs = self.visit(node.value)
         lhs = self.visit(node.target)
         assert not getattr(lhs.dtype, "constexpr", False), "Cannot reassign constants."
+        assert not getattr(lhs, "immutable", False), "Cannot reassign scalar arguments"
         left = copy.deepcopy(lhs)
         for n in ast.walk(left):
             if isinstance(n, (ast.Name, ast.Attribute, ast.Subscript)):
@@ -754,6 +756,8 @@ class ASTProcessor(ast.NodeTransformer):
                 arg.dtype, arg.shape, arg.spec = self.visit_type_annotation(
                     arg.annotation
                 )
+                if len(arg.shape) == 0:
+                    arg.immutable = True  # [NOTE] scalar argument is defined as immutable, we don't allocate buffer for them
                 arg.annotation = self.get_ast_annotaiton(arg.dtype, arg.shape, arg.spec)
                 assert not getattr(
                     arg.dtype, "stateful", False

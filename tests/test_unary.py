@@ -82,6 +82,7 @@ def test_unary():
 
     print("pass test_unary")
 
+
 def test_unary_not():
     def kernel1() -> bool:
         A: bool = 1 == 1
@@ -116,6 +117,7 @@ def test_unary_not():
     assert s() == True
 
     print("pass test_unary_not")
+
 
 if __name__ == "__main__":
     test_unary()

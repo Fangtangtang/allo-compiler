@@ -291,22 +291,29 @@ class ASTProcessor(ast.NodeTransformer):
             node.dtype, node.shape = target_dtype, shape
         if node.dtype == target_dtype:
             return node
-        # TODO: add checking here to make sure the cast is valid
+        # infer specific handler using CastHandler (abstract class for all cast handlers)
+        try:
+            # [NOTE] the first two return value is not useful here, we keep them to make `infer`'s interface consistent
+            _, _, handler = BUILTIN_HANDLERS["cast"].infer(node.dtype, target_dtype)
+        except TypeError as e:
+            raise TypeError(f"Cast inference failed: {e}")
+
         call_node = ast.Call(
             func=ast.Attribute(
                 value=ast.Name(id="__allo__", ctx=ast.Load()),
-                attr="cast",
+                attr=handler,  # Dispatch to specific handler
                 ctx=ast.Load(),
             ),
             args=[
-                node,  # original node
-                ast.Name(id=str(target_dtype), ctx=ast.Load()),
+                node,
+                self.get_ast_annotaiton(
+                    target_dtype, node.shape, getattr(node, "spec", None)
+                ),
             ],
             keywords=[],
         )
         call_node.dtype = target_dtype
-        if hasattr(node, "shape"):
-            call_node.shape = node.shape
+        call_node.shape = node.shape
         return call_node
 
     def visit_Name(self, node: ast.Name):

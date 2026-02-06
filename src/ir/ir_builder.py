@@ -242,6 +242,8 @@ class IRBuilder(ast.NodeVisitor):
                 dynamic_offset.append(index)
                 new_indices.append(index)
                 offsets.append(ShapedType.get_dynamic_stride_or_offset())
+                sizes.append(1)
+                strides.append(1)
         if len(new_indices) == len(shape):  # access element
             if use_affine:  # affine operations
                 affine_map = AffineMap.get(

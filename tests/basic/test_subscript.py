@@ -78,7 +78,45 @@ def test_slice():
 
     print("test_slice passed")
 
+    def kernel2(a: int32[2, 4]) -> int32[2, 4]:
+        b: int32[2, 4]
+        idx: index = 0
+        b[idx] = a[idx] + 1
+        b[1] = a[1] + 1
+        return b
+
+    s = process(kernel2)
+    np_A = np.random.randint(0, 10, (2, 4), dtype=np.int32)
+    np_B = s(np_A)
+    assert np.array_equal(np_B, np_A + 1)
+
+    def kernel3(a: int32[2, 2, 4]) -> int32[2, 2, 4]:
+        b: int32[2, 2, 4]
+        idx: index = 0
+        b[idx] = a[idx] + 1
+        b[idx + 1] = a[idx + 1] + 1
+        return b
+
+    s = process(kernel3)
+    np_A = np.random.randint(0, 10, (2, 2, 4), dtype=np.int32)
+    np_B = s(np_A)
+    assert np.array_equal(np_B, np_A + 1)
+
+    def kernel4(a: int32[2, 2, 4]) -> int32[2, 2, 4]:
+        b: int32[2, 2, 4]
+        idx: index = 0
+        b[idx, :] = a[idx, :, :] + 1
+        b[idx + 1, :, :] = a[idx + 1] + 1
+        return b
+
+    s = process(kernel4)
+    np_A = np.random.randint(0, 10, (2, 2, 4), dtype=np.int32)
+    np_B = s(np_A)
+    assert np.array_equal(np_B, np_A + 1)
+
+    print("test_slice passed")
+
 
 if __name__ == "__main__":
     test_element_access()
-    # test_slice()
+    test_slice()

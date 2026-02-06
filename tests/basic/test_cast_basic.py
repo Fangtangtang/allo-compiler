@@ -489,6 +489,7 @@ def test_index_float_cast():
 
     print("test_index_float_cast passed")
 
+
 def test_index_fixed_cast():
     # [NOTE]: fixed point not supported for llvm backend
     def kernel1(a: index) -> int32:
@@ -513,6 +514,7 @@ def test_index_fixed_cast():
     s = process(kernel3)
 
     print("test_index_fixed_cast passed")
+
 
 if __name__ == "__main__":
     test_int_index_cast()

@@ -27,7 +27,7 @@ from allo.ir.types import (
 ##################################################
 
 
-def cpp_style_binary_arith_rule():
+def dummy_binary_arith_rule():
     int_rules = {
         (Int, Int): lambda t1, t2: (
             (
@@ -157,7 +157,7 @@ def cpp_style_binary_arith_rule():
     )
 
 
-CPP_STYLE_BINARY_ARITH_RULE = cpp_style_binary_arith_rule()
+DUMMY_BINARY_ARITH_RULE = dummy_binary_arith_rule()
 
 
 def type_compatible(types):
@@ -203,7 +203,7 @@ class AddHandler(BuiltinHandler):
 
     @staticmethod
     def infer(*args):
-        return CPP_STYLE_BINARY_ARITH_RULE(args[0], args[1])
+        return DUMMY_BINARY_ARITH_RULE(args[0], args[1])
 
 
 @register_builtin_handler("Sub")
@@ -234,7 +234,7 @@ class SubHandler(BuiltinHandler):
 
     @staticmethod
     def infer(*args):
-        return CPP_STYLE_BINARY_ARITH_RULE(args[0], args[1])
+        return DUMMY_BINARY_ARITH_RULE(args[0], args[1])
 
 
 @register_builtin_handler("Mult")
@@ -265,7 +265,7 @@ class MultHandler(BuiltinHandler):
 
     @staticmethod
     def infer(*args):
-        return CPP_STYLE_BINARY_ARITH_RULE(args[0], args[1])
+        return DUMMY_BINARY_ARITH_RULE(args[0], args[1])
 
 
 @register_builtin_handler("Div")
@@ -300,7 +300,7 @@ class DivHandler(BuiltinHandler):
 
     @staticmethod
     def infer(*args):
-        return CPP_STYLE_BINARY_ARITH_RULE(args[0], args[1])
+        return DUMMY_BINARY_ARITH_RULE(args[0], args[1])
 
 
 @register_builtin_handler("FloorDiv")
@@ -318,7 +318,7 @@ class FloorDivHandler(BuiltinHandler):
 
     @staticmethod
     def infer(*args):
-        return CPP_STYLE_BINARY_ARITH_RULE(args[0], args[1])
+        return DUMMY_BINARY_ARITH_RULE(args[0], args[1])
 
 
 @register_builtin_handler("Mod")
@@ -342,13 +342,13 @@ class ModHandler(BuiltinHandler):
 
     @staticmethod
     def infer(*args):
-        return CPP_STYLE_BINARY_ARITH_RULE(args[0], args[1])
+        return DUMMY_BINARY_ARITH_RULE(args[0], args[1])
 
 
 ##################################################
 # Binary Comparison Operations
 ##################################################
-def cpp_style_comparison_rule():
+def dummy_comparison_rule():
     # [NOTE]: the return type is always bool (currently using i1)
     int_rules = {
         (Int, Int): lambda t1, t2: (
@@ -484,7 +484,7 @@ def cpp_style_comparison_rule():
     )
 
 
-CPP_STYLE_COMPARISON_RULE = cpp_style_comparison_rule()
+DUMMY_COMPARISON_RULE = dummy_comparison_rule()
 
 
 @register_builtin_handler("Eq")
@@ -512,7 +512,7 @@ class EqHandler(BuiltinHandler):
 
     @staticmethod
     def infer(*args):
-        return CPP_STYLE_COMPARISON_RULE(args[0], args[1])
+        return DUMMY_COMPARISON_RULE(args[0], args[1])
 
 
 @register_builtin_handler("NotEq")
@@ -540,7 +540,7 @@ class NotEqHandler(BuiltinHandler):
 
     @staticmethod
     def infer(*args):
-        return CPP_STYLE_COMPARISON_RULE(args[0], args[1])
+        return DUMMY_COMPARISON_RULE(args[0], args[1])
 
 
 # Less than
@@ -573,7 +573,7 @@ class LtHandler(BuiltinHandler):
 
     @staticmethod
     def infer(*args):
-        return CPP_STYLE_COMPARISON_RULE(args[0], args[1])
+        return DUMMY_COMPARISON_RULE(args[0], args[1])
 
 
 # Less than or equal
@@ -606,7 +606,7 @@ class LtEHandler(BuiltinHandler):
 
     @staticmethod
     def infer(*args):
-        return CPP_STYLE_COMPARISON_RULE(args[0], args[1])
+        return DUMMY_COMPARISON_RULE(args[0], args[1])
 
 
 # Greater than
@@ -639,7 +639,7 @@ class GtHandler(BuiltinHandler):
 
     @staticmethod
     def infer(*args):
-        return CPP_STYLE_COMPARISON_RULE(args[0], args[1])
+        return DUMMY_COMPARISON_RULE(args[0], args[1])
 
 
 # Greater than or equal
@@ -672,4 +672,4 @@ class GtEHandler(BuiltinHandler):
 
     @staticmethod
     def infer(*args):
-        return CPP_STYLE_COMPARISON_RULE(args[0], args[1])
+        return DUMMY_COMPARISON_RULE(args[0], args[1])

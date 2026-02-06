@@ -175,9 +175,6 @@ class IRBuilder(ast.NodeVisitor):
             )
         raise NotImplementedError
 
-    def visit_Tuple(self, node: ast.Tuple):
-        raise NotImplementedError
-
     def get_affine_expr(self, node: ast.expr):
         if isinstance(node, ast.Constant):
             return AffineConstantExpr.get(node.value), int(node.value)
@@ -291,9 +288,6 @@ class IRBuilder(ast.NodeVisitor):
                 return subview
             else:
                 return memref_d.CopyOp(val, subview.result, ip=self.get_ip())
-
-    def visit_Slice(self, node: ast.Slice):
-        raise NotImplementedError
 
     def visit_BoolOp(self, node: ast.BoolOp):
         opcls = {

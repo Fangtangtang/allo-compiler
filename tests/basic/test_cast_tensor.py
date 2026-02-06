@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import numpy as np
-import math
 from src.main import process
 from allo.ir.types import (
     int16,
@@ -11,8 +10,6 @@ from allo.ir.types import (
     uint32,
     float16,
     float32,
-    float64,
-    bfloat16,
     Fixed,
     index,
     UFixed,

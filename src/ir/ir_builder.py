@@ -20,6 +20,7 @@ from allo._mlir.ir import (
     InsertionPoint,
     OpView,
     Value,
+    BlockArgument,
     FunctionType,
     MemRefType,
     IndexType,
@@ -184,12 +185,17 @@ class IRBuilder(ast.NodeVisitor):
         raise NotImplementedError
 
     def get_affine_expr(self, node: ast.expr):
+        """
+        Parse an expression into an affine expression.
+
+        [NOTE]: not suppose to build operations in the function, useless you think having some extra unused values are acceptable.
+        """
         if isinstance(node, ast.Constant):
-            return AffineConstantExpr.get(node.value), int(node.value)
+            return AffineConstantExpr.get(node.value), [int(node.value)]
         if isinstance(node, ast.Name):
             var = self.get_symbol(node.id)
             if isinstance(var, MockArg) and var.is_affine:
-                return AffineExpr.get_dim(0), var.result
+                return AffineExpr.get_dim(0), [var.result]
         if isinstance(node, ast.Call):
             if isinstance(node.func, ast.Attribute) and isinstance(
                 node.func.value, ast.Name
@@ -198,13 +204,15 @@ class IRBuilder(ast.NodeVisitor):
                 if node.func.value.id == "__allo__":
                     handler = self.get_builtin_handler(node.func.attr)
                     if handler:
-                        expr, extra = handler.build_affine_expr(node)
+                        expr, extra = handler.get_affine_expr(node)
                         if expr is not None:
+                            assert isinstance(extra, list)
                             return expr, extra
         # TODO: other cases
         return None, None
 
     def get_affine_attr(self, node: ast.expr):
+        # FIXME: tentative
         expr, _ = self.get_affine_expr(node)
         if expr is None:
             return None
@@ -215,39 +223,37 @@ class IRBuilder(ast.NodeVisitor):
         shape: list[int] = base.type.shape  # tensor shape
         layout = base.type.layout
         elts = node.slice.elts if isinstance(node.slice, ast.Tuple) else [node.slice]
-        new_indices, dynamic_offset, offsets, sizes, strides = [], [], [], [], []
-        ivs = []
+        offsets, sizes, strides = [], [], []
+        indices, ivs = [], []
+        # try to parse elts to affine expressions (https://mlir.llvm.org/docs/Dialects/Affine/#affine-expressions)
         use_affine = True
         for elt in elts:
             aff, extra = self.get_affine_expr(elt)
             if aff is not None:
-                # can be parsed as affine expressions (https://mlir.llvm.org/docs/Dialects/Affine/#affine-expressions)
-                new_indices.append(aff)
-                if isinstance(extra, int):
-                    offsets.append(extra)
+                indices.append(aff)
+                if len(extra) == 1 and isinstance(extra[0], int):  # constant value
+                    offsets.append(extra[0])
                 else:
-                    dynamic_offset.append(extra)  # FIXME: tentative
-                    ivs.append(extra)
+                    ivs.extend(iv for iv in extra if isinstance(iv, BlockArgument))
                     offsets.append(ShapedType.get_dynamic_stride_or_offset())
                 sizes.append(1)
                 strides.append(1)
-            elif isinstance(elt, ast.Slice):  # getting slice
+            elif isinstance(elt, ast.Slice):  # getting (static) slice
                 lower, upper, step = elt.lower.value, elt.upper.value, elt.step.value
                 offsets.append(lower)
                 sizes.append((upper - lower) // step)
                 strides.append(step)
             else:
                 use_affine = False
-                index = self.get_op_result(self.visit(elt))
-                dynamic_offset.append(index)
-                new_indices.append(index)
+                # placeholder, so we can use len(indices) to check if is element access
+                indices.append(None)
                 offsets.append(ShapedType.get_dynamic_stride_or_offset())
                 sizes.append(1)
                 strides.append(1)
-        if len(new_indices) == len(shape):  # access element
+        if len(indices) == len(shape):  # access element
             if use_affine:  # affine operations
                 affine_map = AffineMap.get(
-                    dim_count=len(ivs), symbol_count=0, exprs=new_indices
+                    dim_count=len(ivs), symbol_count=0, exprs=indices
                 )
                 affine_attr = AffineMapAttr.get(affine_map)
                 if isinstance(node.ctx, ast.Load):
@@ -269,14 +275,19 @@ class IRBuilder(ast.NodeVisitor):
                     )
                     return None
             else:  # memref operaitons
+                indices = [self.get_op_result(self.visit(elt)) for elt in elts]
                 if isinstance(node.ctx, ast.Load):
-                    op = memref_d.LoadOp(base, new_indices, ip=self.get_ip())
+                    op = memref_d.LoadOp(base, indices, ip=self.get_ip())
                     return op
                 else:  # ast.Store
-                    op = memref_d.StoreOp(val, base, new_indices, ip=self.get_ip())
+                    op = memref_d.StoreOp(val, base, indices, ip=self.get_ip())
                     return None
         else:  # access slice
             # TODO: support hybrid slice
+            dynamic_offset = []
+            for elt, offset_ in zip(elts, offsets):
+                if offset_ < 0:
+                    dynamic_offset.append(self.get_op_result(self.visit(elt)))
             sizes.extend(shape[len(offsets) :])
             strides.extend([1] * (len(shape) - len(offsets)))
             offsets.extend([0] * (len(shape) - len(offsets)))

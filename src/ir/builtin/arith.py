@@ -205,11 +205,11 @@ class AddHandler(BuiltinHandler):
     def infer(*args):
         return DUMMY_BINARY_ARITH_RULE(args[0], args[1])
 
-    def build_affine_expr(self, node: ast.Call):
+    def get_affine_expr(self, node: ast.Call):
         expr_l, val_l = self.builder.get_affine_expr(node.args[0])
         expr_r, val_r = self.builder.get_affine_expr(node.args[1])
         if expr_l and expr_r:
-            return expr_l + expr_r, tuple(val_l) + tuple(val_r)
+            return expr_l + expr_r, val_l + val_r
         return None, None
 
 

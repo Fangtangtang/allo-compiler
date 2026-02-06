@@ -3,7 +3,19 @@
 
 import numpy as np
 from src.main import process
-from allo.ir.types import bool, int8, int32, float32
+from allo.ir.types import bool, int8, int32, float32, float16
+
+
+def test_affine_for():
+    def kernel(A: int32[20]) -> int32[20]:
+        for i in range(10):
+            A[i] = i
+        return A
+
+    s = process(kernel)
+    np_A = np.zeros((20,), dtype=np.int32)
+    gold = np.zeros((20,), dtype=np.int32)
+    assert np.allclose(s(np_A), kernel(gold))
 
 
 def test_vadd():
@@ -21,18 +33,18 @@ def test_vadd():
     s(np_A, np_B, np_D)
     np.testing.assert_allclose(np_C, np_D)
 
-    # def madd(A: float32[32, 4], B: float32[32, 4], C: float32[32, 4]):
-    #     for i in range(32):
-    #         C[i] = A[i] + B[i]
+    def vadd2(A: float32[32], B: float16[32], C: float32[32]):
+        for i in range(32):
+            C[i] = A[i] + B[i]
 
-    # s = process(madd)
-    # np_A = np.random.rand(32, 4).astype(np.float32)
-    # np_B = np.random.rand(32, 4).astype(np.float32)
-    # np_C = np.zeros((32, 4), dtype=np.float32)
-    # madd(np_A, np_B, np_C)
-    # np_D = np.zeros((32, 4), dtype=np.float32)
-    # s(np_A, np_B, np_D)
-    # np.testing.assert_allclose(np_C, np_D)
+    s = process(vadd2)
+    np_A = np.random.rand(32).astype(np.float32)
+    np_B = np.random.rand(32).astype(np.float16)
+    np_C = np.zeros((32,), dtype=np.float32)
+    vadd2(np_A, np_B, np_C)
+    np_D = np.zeros((32,), dtype=np.float32)
+    s(np_A, np_B, np_D)
+    np.testing.assert_allclose(np_C, np_D)
 
     print("pass test_vadd")
 
@@ -111,7 +123,8 @@ def test_scf_for():
 
 
 if __name__ == "__main__":
-    test_vadd()
+    test_affine_for()
+    # test_vadd()
     # test_range_for()
     # test_variable_bound_for()
     # test_variable_bound_for_2()

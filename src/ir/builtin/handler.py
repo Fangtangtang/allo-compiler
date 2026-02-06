@@ -52,7 +52,7 @@ class BuiltinHandler(abc.ABC):
         """
         raise NotImplementedError("infer method is not implemented for this handler.")
 
-    def build_affine_expr(self, node: ast.Call):
+    def get_affine_expr(self, node: ast.Call):
         """
         Build the affine expression for the builtin function call.
 

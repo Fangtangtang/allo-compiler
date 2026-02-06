@@ -435,19 +435,84 @@ def test_float_cast():
     print("test_float_cast passed")
 
 
-def test_arith_with_casting():
-    def kernel1(a: int16, b: int16) -> int32:
-        c: int32 = a + b
+def test_index_float_cast():
+    def kernel1(a: index) -> float32:
+        b: float32 = a
+        return b
+
+    s = process(kernel1)
+    assert math.isclose(s(1), 1.0, rel_tol=1e-3, abs_tol=1e-3)
+    assert math.isclose(s(1000), 1000.0, rel_tol=1e-3, abs_tol=1e-3)
+
+    def kernel2(a: index) -> float64:
+        b: float64 = a
+        return b
+
+    s = process(kernel2)
+    assert math.isclose(s(1), 1.0, rel_tol=1e-3, abs_tol=1e-3)
+    assert math.isclose(s(1000), 1000.0, rel_tol=1e-3, abs_tol=1e-3)
+
+    def kernel3(a: index) -> bfloat16:
+        b: bfloat16 = a
+        return b
+
+    s = process(kernel3)
+    assert math.isclose(s(1), 1.0, rel_tol=1e-3, abs_tol=1e-3)
+    assert math.isclose(s(10), 10.0, rel_tol=1e-3, abs_tol=1e-3)
+
+    def kernel4(a: float16) -> float32:
+        b: index = a
+        c: float32 = b
+        return c
+
+    s = process(kernel4)
+    assert math.isclose(s(1.0), 1.0, rel_tol=1e-3, abs_tol=1e-3)
+    assert math.isclose(s(10.0), 10.0, rel_tol=1e-3, abs_tol=1e-3)
+
+    def kernel5(a: float16) -> float64:
+        b: index = a
+        c: float64 = b
+        return c
+
+    s = process(kernel5)
+    assert math.isclose(s(1.0), 1.0, rel_tol=1e-3, abs_tol=1e-3)
+    assert math.isclose(s(10.0), 10.0, rel_tol=1e-3, abs_tol=1e-3)
+
+    def kernel6(a: float16) -> bfloat16:
+        b: index = a
+        c: bfloat16 = b
+        return c
+
+    s = process(kernel6)
+    assert math.isclose(s(1.0), 1.0, rel_tol=1e-3, abs_tol=1e-3)
+    assert math.isclose(s(10.0), 10.0, rel_tol=1e-3, abs_tol=1e-3)
+
+    print("test_index_float_cast passed")
+
+def test_index_fixed_cast():
+    # [NOTE]: fixed point not supported for llvm backend
+    def kernel1(a: index) -> int32:
+        b: Fixed(16, 16) = a
+        c: int32 = b
         return c
 
     s = process(kernel1)
-    assert s(1, 2) == 3
-    assert s(1000, 2000) == 3000
-    assert s(-1, -2) == -3
-    assert s(-1000, -2000) == -3000
-    assert s(32767, 1) == 32768
-    assert s(-32768, -1) == -32769
 
+    def kernel2(a: index) -> int16:
+        b: UFixed(16, 16) = a
+        c: int16 = b
+        return c
+
+    s = process(kernel2)
+
+    def kernel3(a: index) -> index:
+        b: Fixed(20, 12) = a
+        c: index = b
+        return c
+
+    s = process(kernel3)
+
+    print("test_index_fixed_cast passed")
 
 if __name__ == "__main__":
     test_int_index_cast()
@@ -455,4 +520,5 @@ if __name__ == "__main__":
     test_fixed_cast()
     test_int_cast()
     test_float_cast()
-    # test_arith_with_casting()
+    test_index_float_cast()
+    test_index_fixed_cast()

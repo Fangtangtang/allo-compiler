@@ -13,7 +13,6 @@ from allo.ir.types import (
     UInt,
     Fixed,
     UFixed,
-    bool as allo_bool,
     float16,
     bfloat16,
 )
@@ -278,46 +277,49 @@ class FloatCastHandler(CastHandler):
 @register_builtin_handler("cast_float_to_index")
 class FloatToIndexCastHandler(CastHandler):
     def build(self, node: ast.Call, *args):
-        raise NotImplementedError
         val = self.get_operand(node)
         # FP -> UI -> Index
-        inter_type = IntegerType.get_signless(32)
-        op = arith_d.FPToUIOp(inter_type, val, ip=self.builder.get_ip())
-        mlir_type, is_unsigned = self.get_result_type(node)
+        op = arith_d.FPToUIOp(
+            IntegerType.get_signless(32), val, ip=self.builder.get_ip()
+        )
+        mlir_type, _ = self.get_result_type(node)
         return arith_d.IndexCastOp(mlir_type, op.result, ip=self.builder.get_ip())
 
 
 @register_builtin_handler("cast_index_to_float")
 class IndexToFloatCastHandler(CastHandler):
     def build(self, node: ast.Call, *args):
-        raise NotImplementedError
         val = self.get_operand(node)
         # Index -> SI -> FP
-        inter_type = IntegerType.get_signless(32)
-        op = arith_d.IndexCastOp(inter_type, val, ip=self.builder.get_ip())
-        mlir_type, is_unsigned = self.get_result_type(node)
+        op = arith_d.IndexCastOp(
+            IntegerType.get_signless(32), val, ip=self.builder.get_ip()
+        )
+        mlir_type, _ = self.get_result_type(node)
         return arith_d.SIToFPOp(mlir_type, op.result, ip=self.builder.get_ip())
 
 
 @register_builtin_handler("cast_index_to_fixed")
 class IndexToFixedCastHandler(CastHandler):
     def build(self, node: ast.Call, *args):
-        raise NotImplementedError
         val = self.get_operand(node)
-        inter_type = IntegerType.get_signless(32)
-        op = arith_d.IndexCastOp(inter_type, val, ip=self.builder.get_ip())
+        op = arith_d.IndexCastOp(
+            IntegerType.get_signless(32), val, ip=self.builder.get_ip()
+        )
         mlir_type, is_unsigned = self.get_result_type(node)
-        return allo_d.IntToFixedOp(mlir_type, op.result, ip=self.builder.get_ip())
+        op = allo_d.IntToFixedOp(mlir_type, op.result, ip=self.builder.get_ip())
+        if is_unsigned:
+            op.attributes["unsigned"] = UnitAttr.get()
+        return op
 
 
 @register_builtin_handler("cast_fixed_to_index")
 class FixedToIndexCastHandler(CastHandler):
     def build(self, node: ast.Call, *args):
-        raise NotImplementedError
         val = self.get_operand(node)
-        inter_type = IntegerType.get_signless(32)
-        op = allo_d.FixedToIntOp(inter_type, val, ip=self.builder.get_ip())
-        mlir_type, is_unsigned = self.get_result_type(node)
+        op = allo_d.FixedToIntOp(
+            IntegerType.get_signless(32), val, ip=self.builder.get_ip()
+        )
+        mlir_type, _ = self.get_result_type(node)
         return arith_d.IndexCastOp(mlir_type, op.result, ip=self.builder.get_ip())
 
 

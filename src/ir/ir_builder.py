@@ -184,18 +184,19 @@ class IRBuilder(ast.NodeVisitor):
             )
         raise NotImplementedError
 
-    def get_affine_expr(self, node: ast.expr):
+    def get_affine_expr(self, node: ast.expr, ivs: list):
         """
         Parse an expression into an affine expression.
 
         [NOTE]: not suppose to build operations in the function, useless you think having some extra unused values are acceptable.
         """
         if isinstance(node, ast.Constant):
-            return AffineConstantExpr.get(node.value), [int(node.value)]
+            return AffineConstantExpr.get(node.value)
         if isinstance(node, ast.Name):
             var = self.get_symbol(node.id)
             if isinstance(var, MockArg) and var.is_affine:
-                return AffineExpr.get_dim(0), [var.result]
+                ivs.append(var.result)
+                return AffineExpr.get_dim(len(ivs) - 1)
         if isinstance(node, ast.Call):
             if isinstance(node.func, ast.Attribute) and isinstance(
                 node.func.value, ast.Name
@@ -204,16 +205,13 @@ class IRBuilder(ast.NodeVisitor):
                 if node.func.value.id == "__allo__":
                     handler = self.get_builtin_handler(node.func.attr)
                     if handler:
-                        expr, extra = handler.get_affine_expr(node)
-                        if expr is not None:
-                            assert isinstance(extra, list)
-                            return expr, extra
+                        return handler.get_affine_expr(node, ivs)
         # TODO: other cases
-        return None, None
+        return None
 
     def get_affine_attr(self, node: ast.expr):
         # FIXME: tentative
-        expr, _ = self.get_affine_expr(node)
+        expr = self.get_affine_expr(node, [])
         if expr is None:
             return None
         return AffineMap.get(dim_count=0, symbol_count=0, exprs=[expr])
@@ -228,13 +226,12 @@ class IRBuilder(ast.NodeVisitor):
         # try to parse elts to affine expressions (https://mlir.llvm.org/docs/Dialects/Affine/#affine-expressions)
         use_affine = True
         for elt in elts:
-            aff, extra = self.get_affine_expr(elt)
+            aff = self.get_affine_expr(elt, ivs)
             if aff is not None:
                 indices.append(aff)
-                if len(extra) == 1 and isinstance(extra[0], int):  # constant value
-                    offsets.append(extra[0])
+                if isinstance(elt, ast.Constant):  # constant value
+                    offsets.append(int(elt.value))
                 else:
-                    ivs.extend(iv for iv in extra if isinstance(iv, BlockArgument))
                     offsets.append(ShapedType.get_dynamic_stride_or_offset())
                 sizes.append(1)
                 strides.append(1)

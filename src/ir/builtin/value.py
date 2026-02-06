@@ -36,8 +36,8 @@ class ConstantHandler(BuiltinHandler):
         const_op = arith_d.ConstantOp(dtype, args_[0].value, ip=self.builder.get_ip())
         return const_op
 
-    def get_affine_expr(self, node: ast.Call):
-        return self.builder.get_affine_expr(node.args[0])
+    def get_affine_expr(self, node: ast.Call, ivs: list):
+        return self.builder.get_affine_expr(node.args[0], ivs)
 
 
 @register_builtin_handler("cast")
@@ -107,8 +107,8 @@ class CastHandler(BuiltinHandler):
 
         return res_type, src_type, handler_name
 
-    def get_affine_expr(self, node: ast.Call):
-        return self.builder.get_affine_expr(node.args[0])
+    def get_affine_expr(self, node: ast.Call, ivs: list):
+        return self.builder.get_affine_expr(node.args[0], ivs)
 
     def get_operand(self, node: ast.Call):
         return self.builder.get_op_result(self.builder.visit(node.args[0]))

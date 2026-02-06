@@ -82,6 +82,30 @@ def test_single_affine_for():
     print("pass test_single_affine_for")
 
 
+def test_nested_affine_for():
+    def kernel(A: int32[20]) -> int32[20]:
+        for i in range(10):
+            for j in range(2):
+                A[i * 2 + j] = i
+        return A
+
+    s = process(kernel)
+    np_A = np.zeros((20,), dtype=np.int32)
+    gold = np.zeros((20,), dtype=np.int32)
+    assert np.allclose(s(np_A), kernel(gold))
+
+    def kernel(A: int32[20]) -> int32[20]:
+        for i in range(10):
+            for j in range(2):
+                A[i * 2 + j] = i * 2 + j
+        return A
+
+    s = process(kernel)
+    np_A = np.zeros((20,), dtype=np.int32)
+    gold = np.zeros((20,), dtype=np.int32)
+    assert np.allclose(s(np_A), kernel(gold))
+
+
 def test_vadd():
     def vadd(A: float32[32], B: float32[32], C: float32[32]):
         for i in range(32):
@@ -187,7 +211,8 @@ def test_scf_for():
 
 
 if __name__ == "__main__":
-    test_single_affine_for()
+    # test_single_affine_for()
+    test_nested_affine_for()
     # test_vadd()
     # test_range_for()
     # test_variable_bound_for()

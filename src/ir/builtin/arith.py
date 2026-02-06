@@ -213,12 +213,12 @@ class AddHandler(BuiltinHandler):
     def infer(*args):
         return DUMMY_BINARY_ARITH_RULE(args[0], args[1])
 
-    def get_affine_expr(self, node: ast.Call):
-        expr_l, ivs_l = self.builder.get_affine_expr(node.args[0])
-        expr_r, ivs_r = self.builder.get_affine_expr(node.args[1])
+    def get_affine_expr(self, node: ast.Call, ivs: list):
+        expr_l = self.builder.get_affine_expr(node.args[0], ivs)
+        expr_r = self.builder.get_affine_expr(node.args[1], ivs)
         if expr_l and expr_r:
-            return expr_l + expr_r, ivs_l + ivs_r
-        return None, None
+            return expr_l + expr_r
+        return None
 
 
 @register_builtin_handler("Sub")
@@ -251,12 +251,12 @@ class SubHandler(BuiltinHandler):
     def infer(*args):
         return DUMMY_BINARY_ARITH_RULE(args[0], args[1])
 
-    def get_affine_expr(self, node: ast.Call):
-        expr_l, ivs_l = self.builder.get_affine_expr(node.args[0])
-        expr_r, ivs_r = self.builder.get_affine_expr(node.args[1])
+    def get_affine_expr(self, node: ast.Call, ivs: list):
+        expr_l = self.builder.get_affine_expr(node.args[0], ivs)
+        expr_r = self.builder.get_affine_expr(node.args[1], ivs)
         if expr_l and expr_r:
-            return expr_l - expr_r, ivs_l + ivs_r
-        return None, None
+            return expr_l - expr_r
+        return None
 
 
 @register_builtin_handler("Mult")
@@ -289,12 +289,12 @@ class MultHandler(BuiltinHandler):
     def infer(*args):
         return DUMMY_BINARY_ARITH_RULE(args[0], args[1])
 
-    def get_affine_expr(self, node: ast.Call):
-        expr_l, ivs_l = self.builder.get_affine_expr(node.args[0])
-        expr_r, ivs_r = self.builder.get_affine_expr(node.args[1])
+    def get_affine_expr(self, node: ast.Call, ivs: list):
+        expr_l = self.builder.get_affine_expr(node.args[0], ivs)
+        expr_r = self.builder.get_affine_expr(node.args[1], ivs)
         if expr_l and expr_r:
-            return expr_l * expr_r, ivs_l + ivs_r
-        return None, None
+            return expr_l * expr_r
+        return None
 
 
 @register_builtin_handler("Div")
@@ -331,12 +331,12 @@ class DivHandler(BuiltinHandler):
     def infer(*args):
         return DUMMY_BINARY_ARITH_RULE(args[0], args[1])
 
-    def get_affine_expr(self, node: ast.Call):
-        expr_l, ivs_l = self.builder.get_affine_expr(node.args[0])
-        expr_r, ivs_r = self.builder.get_affine_expr(node.args[1])
+    def get_affine_expr(self, node: ast.Call, ivs: list):
+        expr_l = self.builder.get_affine_expr(node.args[0], ivs)
+        expr_r = self.builder.get_affine_expr(node.args[1], ivs)
         if expr_l and expr_r:
-            return AffineExpr.get_floor_div(expr_l, expr_r), ivs_l + ivs_r
-        return None, None
+            return AffineExpr.get_floor_div(expr_l, expr_r)
+        return None
 
 
 @register_builtin_handler("FloorDiv")
@@ -356,12 +356,12 @@ class FloorDivHandler(BuiltinHandler):
     def infer(*args):
         return DUMMY_BINARY_ARITH_RULE(args[0], args[1])
 
-    def get_affine_expr(self, node: ast.Call):
-        expr_l, ivs_l = self.builder.get_affine_expr(node.args[0])
-        expr_r, ivs_r = self.builder.get_affine_expr(node.args[1])
+    def get_affine_expr(self, node: ast.Call, ivs: list):
+        expr_l = self.builder.get_affine_expr(node.args[0], ivs)
+        expr_r = self.builder.get_affine_expr(node.args[1], ivs)
         if expr_l and expr_r:
-            return AffineExpr.get_floor_div(expr_l, expr_r), ivs_l + ivs_r
-        return None, None
+            return AffineExpr.get_floor_div(expr_l, expr_r)
+        return None
 
 
 @register_builtin_handler("Mod")
@@ -387,12 +387,12 @@ class ModHandler(BuiltinHandler):
     def infer(*args):
         return DUMMY_BINARY_ARITH_RULE(args[0], args[1])
 
-    def get_affine_expr(self, node: ast.Call):
-        expr_l, ivs_l = self.builder.get_affine_expr(node.args[0])
-        expr_r, ivs_r = self.builder.get_affine_expr(node.args[1])
+    def get_affine_expr(self, node: ast.Call, ivs: list):
+        expr_l = self.builder.get_affine_expr(node.args[0], ivs)
+        expr_r = self.builder.get_affine_expr(node.args[1], ivs)
         if expr_l and expr_r:
-            return expr_l % expr_r, ivs_l + ivs_r
-        return None, None
+            return expr_l % expr_r
+        return None
 
 
 ##################################################

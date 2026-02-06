@@ -414,13 +414,13 @@ class FloatToIndexCastHandler(CastHandler):
         val = self.get_operand(node)
         mlir_type, _ = self.get_result_type(node)
         # FP -> UI -> Index
-        if len(getattr(dst_type, "shape", [])) == 0:
+        if len(getattr(mlir_type, "shape", [])) == 0:
             op = arith_d.FPToUIOp(
                 IntegerType.get_signless(32), val, ip=self.builder.get_ip()
             )
             return arith_d.IndexCastOp(mlir_type, op.result, ip=self.builder.get_ip())
         else:
-            op, generic_block = self.get_generic_wrapper(val, dst_type)
+            op, generic_block = self.get_generic_wrapper(val, mlir_type)
             with InsertionPoint(generic_block):
                 # add cast op to block
                 value = arith_d.FPToUIOp(
@@ -437,13 +437,13 @@ class IndexToFloatCastHandler(CastHandler):
         val = self.get_operand(node)
         mlir_type, _ = self.get_result_type(node)
         # Index -> SI -> FP
-        if len(getattr(dst_type, "shape", [])) == 0:
+        if len(getattr(mlir_type, "shape", [])) == 0:
             op = arith_d.IndexCastOp(
                 IntegerType.get_signless(32), val, ip=self.builder.get_ip()
             )
             return arith_d.SIToFPOp(mlir_type, op.result, ip=self.builder.get_ip())
         else:
-            op, generic_block = self.get_generic_wrapper(val, dst_type)
+            op, generic_block = self.get_generic_wrapper(val, mlir_type)
             with InsertionPoint(generic_block):
                 # add cast op to block
                 value = arith_d.IndexCastOp(
@@ -459,7 +459,7 @@ class IndexToFixedCastHandler(CastHandler):
     def build(self, node: ast.Call, *args):
         val = self.get_operand(node)
         mlir_type, is_unsigned = self.get_result_type(node)
-        if len(getattr(dst_type, "shape", [])) == 0:
+        if len(getattr(mlir_type, "shape", [])) == 0:
             op = arith_d.IndexCastOp(
                 IntegerType.get_signless(32), val, ip=self.builder.get_ip()
             )
@@ -468,7 +468,7 @@ class IndexToFixedCastHandler(CastHandler):
                 op.attributes["unsigned"] = UnitAttr.get()
             return op
         else:
-            op, generic_block = self.get_generic_wrapper(val, dst_type)
+            op, generic_block = self.get_generic_wrapper(val, mlir_type)
             with InsertionPoint(generic_block):
                 # add cast op to block
                 value = arith_d.IndexCastOp(

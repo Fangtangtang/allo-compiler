@@ -9,14 +9,7 @@ from allo._mlir.dialects import (
     memref as memref_d,
     linalg as linalg_d,
 )
-from allo._mlir.ir import (
-    IntegerType,
-    BF16Type,
-    F16Type,
-    F32Type,
-    F64Type,
-    UnitAttr
-)
+from allo._mlir.ir import IntegerType, BF16Type, F16Type, F32Type, F64Type, UnitAttr
 from allo.ir.types import (
     AlloType,
     Index,
@@ -132,11 +125,11 @@ def dummy_binary_arith_rule():
                 else TypeError(f"{t1}, {t2} fail binary arithmetic rule")
             )
         ),
-        (Index, Index): lambda t1, t2: (t1, t2, t1),
+        (Index, Index): lambda t1, t2: (UInt(32), UInt(32), UInt(32)),
         (Index, Float): lambda t1, t2: (t2, t2, t2),
         # python native value
-        (Index, int): lambda t1, v2: (t1, t1, t1),
-        (int, Index): lambda v1, t2: (t2, t2, t2),
+        (Index, int): lambda t1, v2: (UInt(32), UInt(32), UInt(32)),
+        (int, Index): lambda v1, t2: (UInt(32), UInt(32), UInt(32)),
     }
     float_rules = {
         (Float, Int): lambda t1, t2: (

@@ -217,10 +217,11 @@ class IRBuilder(ast.NodeVisitor):
         elts = node.slice.elts if isinstance(node.slice, ast.Tuple) else [node.slice]
         new_indices, dynamic_offset, offsets, sizes, strides = [], [], [], [], []
         ivs = []
-        dim_cnt = 0
+        use_affine = True
         for elt in elts:
             aff, extra = self.get_affine_expr(elt)
             if aff is not None:
+                # can be parsed as affine expressions (https://mlir.llvm.org/docs/Dialects/Affine/#affine-expressions)
                 new_indices.append(aff)
                 if isinstance(extra, int):
                     offsets.append(extra)
@@ -228,38 +229,50 @@ class IRBuilder(ast.NodeVisitor):
                     dynamic_offset.append(extra)  # FIXME: tentative
                     ivs.append(extra)
                     offsets.append(ShapedType.get_dynamic_stride_or_offset())
-                    dim_cnt += 1
                 sizes.append(1)
                 strides.append(1)
-            else:
-                assert isinstance(elt, ast.Slice)
+            elif isinstance(elt, ast.Slice):  # getting slice
                 lower, upper, step = elt.lower.value, elt.upper.value, elt.step.value
                 offsets.append(lower)
                 sizes.append((upper - lower) // step)
                 strides.append(step)
+            else:
+                use_affine = False
+                index = self.get_op_result(self.visit(elt))
+                dynamic_offset.append(index)
+                new_indices.append(index)
+                offsets.append(ShapedType.get_dynamic_stride_or_offset())
         if len(new_indices) == len(shape):  # access element
-            affine_map = AffineMap.get(
-                dim_count=len(ivs), symbol_count=0, exprs=new_indices
-            )
-            affine_attr = AffineMapAttr.get(affine_map)
-            if isinstance(node.ctx, ast.Load):
-                op = affine_d.AffineLoadOp(
-                    base.type.element_type,
-                    base,
-                    ivs,
-                    affine_attr,
-                    ip=self.get_ip(),
+            if use_affine:  # affine operations
+                affine_map = AffineMap.get(
+                    dim_count=len(ivs), symbol_count=0, exprs=new_indices
                 )
-                return op
-            else:  # ast.Store
-                op = affine_d.AffineStoreOp(
-                    val,
-                    base,
-                    ivs,
-                    affine_attr,
-                    ip=self.get_ip(),
-                )
-                return None
+                affine_attr = AffineMapAttr.get(affine_map)
+                if isinstance(node.ctx, ast.Load):
+                    op = affine_d.AffineLoadOp(
+                        base.type.element_type,
+                        base,
+                        ivs,
+                        affine_attr,
+                        ip=self.get_ip(),
+                    )
+                    return op
+                else:  # ast.Store
+                    op = affine_d.AffineStoreOp(
+                        val,
+                        base,
+                        ivs,
+                        affine_attr,
+                        ip=self.get_ip(),
+                    )
+                    return None
+            else:  # memref operaitons
+                if isinstance(node.ctx, ast.Load):
+                    op = memref_d.LoadOp(base, new_indices, ip=self.get_ip())
+                    return op
+                else:  # ast.Store
+                    op = memref_d.StoreOp(val, base, new_indices, ip=self.get_ip())
+                    return None
         else:  # access slice
             # TODO: support hybrid slice
             sizes.extend(shape[len(offsets) :])

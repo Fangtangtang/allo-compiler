@@ -52,6 +52,15 @@ class BuiltinHandler(abc.ABC):
         """
         raise NotImplementedError("infer method is not implemented for this handler.")
 
+    def build_affine_expr(self, node: ast.Call):
+        """
+        Build the affine expression for the builtin function call.
+
+        Args:
+            node: The ast.Call node.
+        """
+        return None, None
+
 
 class TypingRule:
     """Type inference rule for a set of operations."""

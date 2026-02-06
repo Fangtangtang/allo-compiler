@@ -9,7 +9,14 @@ from allo._mlir.dialects import (
     memref as memref_d,
     linalg as linalg_d,
 )
-from allo._mlir.ir import IntegerType, BF16Type, F16Type, F32Type, F64Type, UnitAttr
+from allo._mlir.ir import (
+    IntegerType,
+    BF16Type,
+    F16Type,
+    F32Type,
+    F64Type,
+    UnitAttr
+)
 from allo.ir.types import (
     AlloType,
     Index,
@@ -204,6 +211,13 @@ class AddHandler(BuiltinHandler):
     @staticmethod
     def infer(*args):
         return DUMMY_BINARY_ARITH_RULE(args[0], args[1])
+
+    def build_affine_expr(self, node: ast.Call):
+        expr_l, val_l = self.builder.get_affine_expr(node.args[0])
+        expr_r, val_r = self.builder.get_affine_expr(node.args[1])
+        if expr_l and expr_r:
+            return expr_l + expr_r, tuple(val_l) + tuple(val_r)
+        return None, None
 
 
 @register_builtin_handler("Sub")

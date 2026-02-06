@@ -61,6 +61,14 @@ class IRBuilder(ast.NodeVisitor):
 
         self.current_func: func_d.FuncOp = None  # the function under construction
         self.ip_stack = []  # module insert pointes
+        self.handler_cache = {}
+
+    def get_builtin_handler(self, name):
+        if name not in self.handler_cache:
+            if name not in BUILTIN_HANDLERS:
+                return None
+            self.handler_cache[name] = BUILTIN_HANDLERS[name](self)
+        return self.handler_cache[name]
 
     def visit(self, node):
         """
@@ -182,6 +190,17 @@ class IRBuilder(ast.NodeVisitor):
             var = self.get_symbol(node.id)
             if isinstance(var, MockArg) and var.is_affine:
                 return AffineExpr.get_dim(0), var.result
+        if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Attribute) and isinstance(
+                node.func.value, ast.Name
+            ):
+                # builtin
+                if node.func.value.id == "__allo__":
+                    handler = self.get_builtin_handler(node.func.attr)
+                    if handler:
+                        expr, extra = handler.build_affine_expr(node)
+                        if expr is not None:
+                            return expr, extra
         # TODO: other cases
         return None, None
 
@@ -197,15 +216,17 @@ class IRBuilder(ast.NodeVisitor):
         layout = base.type.layout
         elts = node.slice.elts if isinstance(node.slice, ast.Tuple) else [node.slice]
         new_indices, dynamic_offset, offsets, sizes, strides = [], [], [], [], []
+        ivs = []
         dim_cnt = 0
         for elt in elts:
-            aff, offset = self.get_affine_expr(elt)
+            aff, extra = self.get_affine_expr(elt)
             if aff is not None:
                 new_indices.append(aff)
-                if isinstance(offset, int):
-                    offsets.append(offset)
+                if isinstance(extra, int):
+                    offsets.append(extra)
                 else:
-                    dynamic_offset.append(offset)  # FIXME: tentative
+                    dynamic_offset.append(extra)  # FIXME: tentative
+                    ivs.append(extra)
                     offsets.append(ShapedType.get_dynamic_stride_or_offset())
                     dim_cnt += 1
                 sizes.append(1)
@@ -218,10 +239,9 @@ class IRBuilder(ast.NodeVisitor):
                 strides.append(step)
         if len(new_indices) == len(shape):  # access element
             affine_map = AffineMap.get(
-                dim_count=dim_cnt, symbol_count=0, exprs=new_indices
+                dim_count=len(ivs), symbol_count=0, exprs=new_indices
             )
             affine_attr = AffineMapAttr.get(affine_map)
-            ivs = dynamic_offset  # FIXME: dim_count, ivs
             if isinstance(node.ctx, ast.Load):
                 op = affine_d.AffineLoadOp(
                     base.type.element_type,
@@ -440,7 +460,7 @@ class IRBuilder(ast.NodeVisitor):
                 # handling for builtins
                 name = node.func.attr
                 assert name in BUILTIN_HANDLERS
-                handler = BUILTIN_HANDLERS[name](self)
+                handler = self.get_builtin_handler(name)
                 return handler.build(node)
         raise NotImplementedError
 

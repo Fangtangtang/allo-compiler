@@ -3,10 +3,10 @@
 
 import numpy as np
 from src.main import process
-from allo.ir.types import bool, int8, int32, float32, float16
+from allo.ir.types import bool, int8, int32, float32, float16, index
 
 
-def test_affine_for():
+def test_single_affine_for():
     def kernel(A: int32[20]) -> int32[20]:
         for i in range(10):
             A[i] = i
@@ -16,6 +16,70 @@ def test_affine_for():
     np_A = np.zeros((20,), dtype=np.int32)
     gold = np.zeros((20,), dtype=np.int32)
     assert np.allclose(s(np_A), kernel(gold))
+
+    def kernel(A: int32[20]) -> int32[20]:
+        for i in range(10):
+            A[i + 1] = i
+        return A
+
+    s = process(kernel)
+    np_A = np.zeros((20,), dtype=np.int32)
+    gold = np.zeros((20,), dtype=np.int32)
+    assert np.allclose(s(np_A), kernel(gold))
+
+    def kernel(A: int32[20]) -> int32[20]:
+        for i in range(10, 20):
+            A[i - 1] = i
+        return A
+
+    s = process(kernel)
+    np_A = np.zeros((20,), dtype=np.int32)
+    gold = np.zeros((20,), dtype=np.int32)
+    assert np.allclose(s(np_A), kernel(gold))
+
+    def kernel(A: int32[20]) -> int32[20]:
+        for i in range(10):
+            A[i * 2] = i
+        return A
+
+    s = process(kernel)
+    np_A = np.zeros((20,), dtype=np.int32)
+    gold = np.zeros((20,), dtype=np.int32)
+    assert np.allclose(s(np_A), kernel(gold))
+
+    def kernel(A: int32[20]) -> int32[20]:
+        for i in range(0, 20, 2):
+            A[i / 2] = i
+        return A
+
+    s = process(kernel)
+    np_A = np.zeros((20,), dtype=np.int32)
+    gold = np.zeros((20,), dtype=np.int32)
+    for i in range(0, 20, 2):
+        gold[i // 2] = i
+    assert np.allclose(s(np_A), gold)
+
+    def kernel(A: int32[20]) -> int32[20]:
+        for i in range(0, 20, 2):
+            A[i // 2] = i
+        return A
+
+    s = process(kernel)
+    np_A = np.zeros((20,), dtype=np.int32)
+    gold = np.zeros((20,), dtype=np.int32)
+    assert np.allclose(s(np_A), kernel(gold))
+
+    def kernel(A: int32[20]) -> int32[20]:
+        for i in range(20):
+            A[i % 10] = A[i % 10] + 1
+        return A
+
+    s = process(kernel)
+    np_A = np.zeros((20,), dtype=np.int32)
+    gold = np.zeros((20,), dtype=np.int32)
+    assert np.allclose(s(np_A), kernel(gold))
+
+    print("pass test_single_affine_for")
 
 
 def test_vadd():
@@ -123,7 +187,7 @@ def test_scf_for():
 
 
 if __name__ == "__main__":
-    test_affine_for()
+    test_single_affine_for()
     # test_vadd()
     # test_range_for()
     # test_variable_bound_for()

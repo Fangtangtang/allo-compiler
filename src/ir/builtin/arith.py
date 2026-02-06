@@ -9,7 +9,15 @@ from allo._mlir.dialects import (
     memref as memref_d,
     linalg as linalg_d,
 )
-from allo._mlir.ir import IntegerType, BF16Type, F16Type, F32Type, F64Type, UnitAttr
+from allo._mlir.ir import (
+    IntegerType,
+    BF16Type,
+    F16Type,
+    F32Type,
+    F64Type,
+    UnitAttr,
+    AffineExpr,
+)
 from allo.ir.types import (
     AlloType,
     Index,
@@ -206,10 +214,10 @@ class AddHandler(BuiltinHandler):
         return DUMMY_BINARY_ARITH_RULE(args[0], args[1])
 
     def get_affine_expr(self, node: ast.Call):
-        expr_l, val_l = self.builder.get_affine_expr(node.args[0])
-        expr_r, val_r = self.builder.get_affine_expr(node.args[1])
+        expr_l, ivs_l = self.builder.get_affine_expr(node.args[0])
+        expr_r, ivs_r = self.builder.get_affine_expr(node.args[1])
         if expr_l and expr_r:
-            return expr_l + expr_r, val_l + val_r
+            return expr_l + expr_r, ivs_l + ivs_r
         return None, None
 
 
@@ -243,6 +251,13 @@ class SubHandler(BuiltinHandler):
     def infer(*args):
         return DUMMY_BINARY_ARITH_RULE(args[0], args[1])
 
+    def get_affine_expr(self, node: ast.Call):
+        expr_l, ivs_l = self.builder.get_affine_expr(node.args[0])
+        expr_r, ivs_r = self.builder.get_affine_expr(node.args[1])
+        if expr_l and expr_r:
+            return expr_l - expr_r, ivs_l + ivs_r
+        return None, None
+
 
 @register_builtin_handler("Mult")
 class MultHandler(BuiltinHandler):
@@ -273,6 +288,13 @@ class MultHandler(BuiltinHandler):
     @staticmethod
     def infer(*args):
         return DUMMY_BINARY_ARITH_RULE(args[0], args[1])
+
+    def get_affine_expr(self, node: ast.Call):
+        expr_l, ivs_l = self.builder.get_affine_expr(node.args[0])
+        expr_r, ivs_r = self.builder.get_affine_expr(node.args[1])
+        if expr_l and expr_r:
+            return expr_l * expr_r, ivs_l + ivs_r
+        return None, None
 
 
 @register_builtin_handler("Div")
@@ -309,6 +331,13 @@ class DivHandler(BuiltinHandler):
     def infer(*args):
         return DUMMY_BINARY_ARITH_RULE(args[0], args[1])
 
+    def get_affine_expr(self, node: ast.Call):
+        expr_l, ivs_l = self.builder.get_affine_expr(node.args[0])
+        expr_r, ivs_r = self.builder.get_affine_expr(node.args[1])
+        if expr_l and expr_r:
+            return AffineExpr.get_floor_div(expr_l, expr_r), ivs_l + ivs_r
+        return None, None
+
 
 @register_builtin_handler("FloorDiv")
 class FloorDivHandler(BuiltinHandler):
@@ -326,6 +355,13 @@ class FloorDivHandler(BuiltinHandler):
     @staticmethod
     def infer(*args):
         return DUMMY_BINARY_ARITH_RULE(args[0], args[1])
+
+    def get_affine_expr(self, node: ast.Call):
+        expr_l, ivs_l = self.builder.get_affine_expr(node.args[0])
+        expr_r, ivs_r = self.builder.get_affine_expr(node.args[1])
+        if expr_l and expr_r:
+            return AffineExpr.get_floor_div(expr_l, expr_r), ivs_l + ivs_r
+        return None, None
 
 
 @register_builtin_handler("Mod")
@@ -350,6 +386,13 @@ class ModHandler(BuiltinHandler):
     @staticmethod
     def infer(*args):
         return DUMMY_BINARY_ARITH_RULE(args[0], args[1])
+
+    def get_affine_expr(self, node: ast.Call):
+        expr_l, ivs_l = self.builder.get_affine_expr(node.args[0])
+        expr_r, ivs_r = self.builder.get_affine_expr(node.args[1])
+        if expr_l and expr_r:
+            return expr_l % expr_r, ivs_l + ivs_r
+        return None, None
 
 
 ##################################################

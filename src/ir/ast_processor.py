@@ -348,10 +348,6 @@ class ASTProcessor(ast.NodeTransformer):
         node.shape = tuple()  # dtype unknown
         return node
 
-    def visit_Tuple(self, node: ast.Tuple):
-        # e.g., return A, B
-        raise NotImplementedError
-
     def visit_Dict(self, node: ast.Dict):
         raise NotImplementedError
 
@@ -759,11 +755,24 @@ class ASTProcessor(ast.NodeTransformer):
         raise NotImplementedError
 
     def visit_Return(self, node: ast.Return):
-        # TODO: return a tuple (multiple return value)
-        node.value = self.visit(node.value)
+        values = node.value.elts if isinstance(node.value, ast.Tuple) else [node.value]
         func_node = self.symbol_table.functions[self.current_func]
-        node.value = self.visit_cast(node.value, func_node.dtype)
-        node.value = self.visit_broadcast(node.value, func_node.dtype, func_node.shape)
+        dtypes = (
+            func_node.dtype if isinstance(func_node.dtype, list) else [func_node.dtype]
+        )
+        shapes = (
+            func_node.shape if isinstance(func_node.shape, list) else [func_node.shape]
+        )
+        assert len(values) == len(dtypes) == len(shapes), "Invalid return statement"
+        new_values = []
+        for value, dtype, shape in zip(values, dtypes, shapes):
+            value = self.visit_cast(self.visit(value), dtype)
+            value = self.visit_broadcast(value, dtype, shape)
+            new_values.append(value)
+        if isinstance(node.value, ast.Tuple):
+            node.value.elts = new_values
+        else:
+            node.value = new_values[0]
         return node
 
     def visit_Pass(self, node: ast.Pass):

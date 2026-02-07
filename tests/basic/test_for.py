@@ -3,7 +3,7 @@
 
 import numpy as np
 from src.main import process
-from allo.ir.types import bool, int8, int32, float32, float16, index
+from allo.ir.types import int32, float32, float16
 
 
 def test_single_affine_for():

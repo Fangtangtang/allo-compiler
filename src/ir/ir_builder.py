@@ -479,16 +479,20 @@ class IRBuilder(ast.NodeVisitor):
         if node.value is None:
             func_d.ReturnOp([], ip=self.get_ip())
             return
-        ret = self.get_op_result(self.visit(node.value))
-        if (
-            isinstance(ret.type, MemRefType)
-            and ret.type != self.current_func.type.results[0]
-        ):  # mlir has strict type checking, `memref<32xi32, strided<[1]>>` != `memref<32xi32>`
-            # FIXME: return unsigned?
-            alloc_op = self.build_buffer(self.current_func.type.results[0], False)
-            memref_d.CopyOp(ret, alloc_op.result, ip=self.get_ip())
-            ret = alloc_op.result
-        func_d.ReturnOp(ret if isinstance(ret, list) else [ret], ip=self.get_ip())
+        values = node.value.elts if isinstance(node.value, ast.Tuple) else [node.value]
+        rets = []
+        for idx, value in enumerate(values):
+            ret = self.get_op_result(self.visit(value))
+            if (
+                isinstance(ret.type, MemRefType)
+                and ret.type != self.current_func.type.results[idx]
+            ):  # mlir has strict type checking, `memref<32xi32, strided<[1]>>` != `memref<32xi32>`
+                # FIXME: return unsigned?
+                alloc_op = self.build_buffer(self.current_func.type.results[idx], False)
+                memref_d.CopyOp(ret, alloc_op.result, ip=self.get_ip())
+                ret = alloc_op.result
+            rets.append(ret)
+        func_d.ReturnOp(rets, ip=self.get_ip())
 
     def visit_Pass(self, node: ast.Pass):
         return None

@@ -4,8 +4,8 @@ This directory contains the test suite.
 
 ## Directory Structure
 
-- `basic`: Contains basic functionality tests (assignment, binary operations, branching, logic) that have passed.
-- `test_*.py` files in the root of this directory cover other features like loops, memory, and function calls.
+- `basic`: Contains basic functionality tests (assignment, binary operations, branching, logic, loops, function calls) that have passed.
+- `test_*.py` files in the root of this directory cover other features under development.
 
 ## Running Tests
 

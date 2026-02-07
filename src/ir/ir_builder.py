@@ -382,6 +382,9 @@ class IRBuilder(ast.NodeVisitor):
                 value, target, [], AffineMapAttr.get(affine_map), ip=self.get_ip()
             )
 
+    def visit_Expr(self, node: ast.Expr):
+        return self.visit(node.value)
+
     def visit_For(self, node: ast.For):
         # TODO: should use higher-level affine loop if possible
         args = node.iter.args

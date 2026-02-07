@@ -656,7 +656,8 @@ class ASTProcessor(ast.NodeTransformer):
 
     def visit_Expr(self, node: ast.Expr):
         if isinstance(node.value, ast.Call):
-            return self.visit(node.value)
+            node.value = self.visit(node.value)
+            return node
         if isinstance(node.value, ast.Constant):
             # comments
             return None
@@ -795,7 +796,8 @@ class ASTProcessor(ast.NodeTransformer):
                 )
                 # FIXME: result dtype, shape?
                 return call_node
-        raise NotImplementedError
+        # TODO
+        return node
 
     def visit_FunctionDef(self, node: ast.FunctionDef, instantiate: list = None):
         with self.block_scope_guard():

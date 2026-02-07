@@ -421,7 +421,20 @@ class IRBuilder(ast.NodeVisitor):
         return
 
     def visit_While(self, node: ast.While):
-        raise NotImplementedError
+        while_op = scf_d.WhileOp([], [], ip=self.get_ip())
+        while_op.before.blocks.append(*[])
+        while_op.after.blocks.append(*[])
+        self.set_ip(while_op.before.blocks[0])
+        cond = self.get_op_result(self.visit(node.test))
+        scf_d.ConditionOp(cond, [], ip=self.get_ip())
+        self.pop_ip()
+        self.set_ip(while_op.after.blocks[0])
+        with self.block_scope_guard():
+            for stmt in node.body:
+                self.visit(stmt)
+            scf_d.YieldOp([], ip=self.get_ip())
+        self.pop_ip()
+        return while_op
 
     def visit_If(self, node: ast.If):
         # TODO: should use higher-level affine loop if possible

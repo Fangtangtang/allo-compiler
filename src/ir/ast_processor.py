@@ -7,7 +7,15 @@ from collections.abc import Callable
 import ast
 from .utils import parse_ast, SymbolTable, BlockScopeGuard, Scope
 from .typing_rule import cpp_style_registry
-from allo.ir.types import AlloType, Float, Stream, Stateful, ConstExpr, Index
+from allo.ir.types import (
+    AlloType,
+    Float,
+    Stream,
+    Stateful,
+    ConstExpr,
+    Index,
+    bool as allo_bool,
+)
 from allo.memory import Layout
 from .builtin import BUILTIN_HANDLERS
 
@@ -699,11 +707,23 @@ class ASTProcessor(ast.NodeTransformer):
             raise RuntimeError(
                 "'else' clause for 'while' not supported in Allo kernels"
             )
-        raise NotImplementedError
+        node.test = self.visit_cast(self.visit(node.test), allo_bool)
+        assert len(node.test.shape) == 0, "while condition should be a scalar."
+        with self.block_scope_guard():
+            new_body = []
+            for stmt in node.body:
+                res = self.visit(stmt)
+                if isinstance(res, list):
+                    new_body.extend(res)
+                elif res is not None:
+                    new_body.append(res)
+            node.body = new_body
+        return node
 
     def visit_If(self, node: ast.If):
         # e.g., if i < 10: ... else: ...
-        node.test = self.visit(node.test)
+        node.test = self.visit_cast(self.visit(node.test), allo_bool)
+        assert len(node.test.shape) == 0, "if condition should be a scalar."
         with self.block_scope_guard():
             new_body = []
             for stmt in node.body:

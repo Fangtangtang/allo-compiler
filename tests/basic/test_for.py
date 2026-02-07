@@ -79,6 +79,21 @@ def test_single_affine_for():
     gold = np.zeros((20,), dtype=np.int32)
     assert np.allclose(s(np_A), kernel(gold))
 
+    def kernel(A: int32[20]):
+        for i in range(10):
+            A[i] = i
+        for i in range(10, 20):
+            A[i] = i
+        for i in range(0, 20, 2):
+            A[i] = i * 2
+
+    s = process(kernel)
+    np_A = np.zeros((20,), dtype=np.int32)
+    kernel(np_A)
+    np_B = np.zeros((20,), dtype=np.int32)
+    s(np_B)
+    np.testing.assert_allclose(np_A, np_B)
+
     print("pass test_single_affine_for")
 
 
@@ -158,26 +173,34 @@ def test_vadd():
     s(np_A, np_B, np_D)
     np.testing.assert_allclose(np_C, np_D)
 
+    def vadd3(A: float32[32, 4], B: float16[32, 4], C: float32[32, 4]):
+        for i in range(32):
+            for j in range(4):
+                C[i, j] = A[i, j] + B[i, j]
+
+    s = process(vadd3)
+    np_A = np.random.rand(32, 4).astype(np.float32)
+    np_B = np.random.rand(32, 4).astype(np.float16)
+    np_C = np.zeros((32, 4), dtype=np.float32)
+    vadd3(np_A, np_B, np_C)
+    np_D = np.zeros((32, 4), dtype=np.float32)
+    s(np_A, np_B, np_D)
+    np.testing.assert_allclose(np_C, np_D)
+
+    def vadd4(A: float32[32, 4], B: float16[32, 4], C: float32[32, 4]):
+        for i in range(32):
+            C[i] = A[i] + B[i]
+
+    s = process(vadd4)
+    np_A = np.random.rand(32, 4).astype(np.float32)
+    np_B = np.random.rand(32, 4).astype(np.float16)
+    np_C = np.zeros((32, 4), dtype=np.float32)
+    vadd4(np_A, np_B, np_C)
+    np_D = np.zeros((32, 4), dtype=np.float32)
+    s(np_A, np_B, np_D)
+    np.testing.assert_allclose(np_C, np_D)
+
     print("pass test_vadd")
-
-
-def test_range_for():
-    def kernel(A: int32[20]):
-        for i in range(10):
-            A[i] = i
-        for i in range(10, 20):
-            A[i] = i
-        for i in range(0, 20, 2):
-            A[i] = i  # * 2
-
-    s = process(kernel)
-    # print(s.module)
-    # mod = s.build()
-    # np_A = np.zeros((20,), dtype=np.int32)
-    # kernel(np_A)
-    # np_B = np.zeros((20,), dtype=np.int32)
-    # mod(np_B)
-    # np.testing.assert_allclose(np_A, np_B)
 
 
 def test_variable_bound_for():
@@ -188,34 +211,53 @@ def test_variable_bound_for():
                     A[k] += i - j
 
     s = process(kernel)
-    # print(s.module)
-    # mod = s.build()
-    # np_A = np.zeros((10,), dtype=np.int32)
-    # kernel(np_A)
-    # np_B = np.zeros((10,), dtype=np.int32)
-    # mod(np_B)
-    # np.testing.assert_allclose(np_A, np_B)
+    np_A = np.zeros((10,), dtype=np.int32)
+    kernel(np_A)
+    np_B = np.zeros((10,), dtype=np.int32)
+    s(np_B)
+    np.testing.assert_allclose(np_A, np_B)
 
-
-def test_variable_bound_for_2():
-    def kernel() -> int32[10]:
-        B: int32[10] = 0
+    def kernel(B: int32[10]):
         for i in range(10):
             for j in range(i, i + 1):
                 B[i] += j
-        return B
 
     s = process(kernel)
-    # print(s.module)
-    # mod = s.build()
-    # np_A = np.zeros((10,), dtype=np.int32)
-    # kernel(np_A)
-    # np_B = np.zeros((10,), dtype=np.int32)
-    # mod(np_B)
-    # np.testing.assert_allclose(np_A, np_B)
+    np_A = np.zeros((10,), dtype=np.int32)
+    kernel(np_A)
+    np_B = np.zeros((10,), dtype=np.int32)
+    s(np_B)
+    np.testing.assert_allclose(np_A, np_B)
+
+    def kernel(A: int32[10], B: int32[10]):
+        for i in range(5):
+            for j in range(i, i + 5):
+                A[1 + i - 1] = B[1 + i - 1]
+
+    s = process(kernel)
+    B = np.random.randint(0, 10, (10,), dtype=np.int32)
+    np_A = np.zeros((10,), dtype=np.int32)
+    kernel(np_A, B)
+    np_B = np.zeros((10,), dtype=np.int32)
+    s(np_B, B)
+    np.testing.assert_allclose(np_A, np_B)
+
+    print("pass test_variable_bound_for")
 
 
 def test_scf_for():
+    def kernel(A: int32[10]):
+        bound: int32 = 10
+        for i in range(bound):
+            A[i] = i
+
+    s = process(kernel)
+    np_A = np.zeros((10,), dtype=np.int32)
+    kernel(np_A)
+    np_B = np.zeros((10,), dtype=np.int32)
+    s(np_B)
+    np.testing.assert_allclose(np_A, np_B)
+
     def kernel(A: int32[10], B: int32[10]):
         for i in range(10):
             for j in range(A[i], 10, A[i]):
@@ -223,22 +265,18 @@ def test_scf_for():
                     B[k] += i - j
 
     s = process(kernel)
-    # print(s.module)
-    # mod = s.build()
-    # np_A = np.zeros((10,), dtype=np.int32) + 1
-    # np_B = np.zeros((10,), dtype=np.int32)
-    # kernel(np_A, np_B)
-    # np_C = np.zeros((10,), dtype=np.int32) + 1
-    # np_D = np.zeros((10,), dtype=np.int32)
-    # mod(np_C, np_D)
-    # np.testing.assert_allclose(np_B, np_D)
+    np_A = np.zeros((10,), dtype=np.int32) + 1
+    np_B = np.zeros((10,), dtype=np.int32)
+    kernel(np_A, np_B)
+    np_C = np.zeros((10,), dtype=np.int32) + 1
+    np_D = np.zeros((10,), dtype=np.int32)
+    s(np_C, np_D)
+    np.testing.assert_allclose(np_B, np_D)
 
 
 if __name__ == "__main__":
-    # test_single_affine_for()
+    test_single_affine_for()
     test_nested_affine_for()
-    # test_vadd()
-    # test_range_for()
-    # test_variable_bound_for()
-    # test_variable_bound_for_2()
-    # test_scf_for()
+    test_vadd()
+    test_variable_bound_for()
+    test_scf_for()

@@ -173,7 +173,6 @@ class IRBuilder(ast.NodeVisitor):
         raise NotImplementedError
 
     def visit_Constant(self, node: ast.Constant):
-        # FIXME: tentative
         if type(node.value) is int:
             return arith_d.ConstantOp(
                 arith_d.IndexType.get(), node.value, ip=self.get_ip()
@@ -210,11 +209,11 @@ class IRBuilder(ast.NodeVisitor):
         return None
 
     def get_affine_attr(self, node: ast.expr):
-        # FIXME: tentative
-        expr = self.get_affine_expr(node, [])
+        ivs = []
+        expr = self.get_affine_expr(node, ivs)
         if expr is None:
-            return None
-        return AffineMap.get(dim_count=0, symbol_count=0, exprs=[expr])
+            return None, None
+        return AffineMap.get(dim_count=len(ivs), symbol_count=0, exprs=[expr]), ivs
 
     def visit_Subscript(self, node: ast.Subscript, val=None):
         base = self.get_op_result(self.visit(node.value))
@@ -386,18 +385,20 @@ class IRBuilder(ast.NodeVisitor):
     def visit_For(self, node: ast.For):
         # TODO: should use higher-level affine loop if possible
         args = node.iter.args
-        lb = self.get_affine_attr(args[0])
-        ub = self.get_affine_attr(args[1])
-        use_affine_loop = lb is not None and ub is not None
+        lb, lb_bound_ivs = self.get_affine_attr(args[0])
+        ub, ub_bound_ivs = self.get_affine_attr(args[1])
+        use_affine_loop = (
+            lb is not None and ub is not None and isinstance(args[2], ast.Constant)
+        )
         if use_affine_loop:
-            step = args[2].value
+            step = int(args[2].value)
             for_op = affine_d.AffineForOp(
                 lower_bound=lb,
                 upper_bound=ub,
                 step=step,
                 iter_args=[],
-                lower_bound_operands=[],
-                upper_bound_operands=[],
+                lower_bound_operands=lb_bound_ivs,
+                upper_bound_operands=ub_bound_ivs,
                 ip=self.get_ip(),
             )
             affine_d.AffineYieldOp([], ip=InsertionPoint(for_op.body))
@@ -471,6 +472,9 @@ class IRBuilder(ast.NodeVisitor):
             memref_d.CopyOp(ret, alloc_op.result, ip=self.get_ip())
             ret = alloc_op.result
         func_d.ReturnOp(ret if isinstance(ret, list) else [ret], ip=self.get_ip())
+
+    def visit_Pass(self, node: ast.Pass):
+        return None
 
     def visit_With(self, node: ast.With):
         raise NotImplementedError

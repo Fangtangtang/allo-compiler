@@ -606,7 +606,6 @@ class ASTProcessor(ast.NodeTransformer):
             if isinstance(n, (ast.Name, ast.Attribute, ast.Subscript)):
                 n.ctx = ast.Load()
         value = self.visit_binary_op_operands(left, rhs, node.op)
-        assert value.dtype == lhs.dtype, value.shape == lhs.shape
         return self.make_assignment(lhs, value)
 
     def visit_AnnAssign(self, node: ast.AnnAssign):
@@ -682,7 +681,6 @@ class ASTProcessor(ast.NodeTransformer):
                     ivs_.insert(0, ast.Constant(value=0))
                 if len(ivs_) == 2:
                     ivs_.append(ast.Constant(value=1))
-                assert isinstance(ivs_[-1], ast.Constant)
                 node.iter.args = ivs_
                 new_body = []
                 for stmt in node.body:
@@ -737,6 +735,9 @@ class ASTProcessor(ast.NodeTransformer):
         func_node = self.symbol_table.functions[self.current_func[-1]]
         node.value = self.visit_cast(node.value, func_node.dtype)
         node.value = self.visit_broadcast(node.value, func_node.dtype, func_node.shape)
+        return node
+
+    def visit_Pass(self, node: ast.Pass):
         return node
 
     def visit_With(self, node: ast.With):

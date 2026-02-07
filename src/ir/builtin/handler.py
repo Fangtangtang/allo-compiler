@@ -17,6 +17,20 @@ def register_builtin_handler(name):
     return decorator
 
 
+def register_custom_handler(name=None):
+    def decorator(cls):
+        handler_name = name if name else cls.__name__
+        BUILTIN_HANDLERS[handler_name] = cls
+
+        def custom_func(*args, **kwargs):
+            pass
+
+        custom_func.__dict__["__allo_handler__"] = handler_name
+        return custom_func
+
+    return decorator
+
+
 class BuiltinHandler(abc.ABC):
     def __init__(self, builder):
         """

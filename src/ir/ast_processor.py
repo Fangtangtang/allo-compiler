@@ -765,8 +765,37 @@ class ASTProcessor(ast.NodeTransformer):
         raise NotImplementedError
 
     def visit_Call(self, node: ast.Call):
-        # FIXME
-        return node
+        if isinstance(node.func, ast.Name):
+            # FIXME: tentative!!!
+            func = self.resolve_node(node.func)
+            if hasattr(func, "__allo_handler__"):
+                name = func.__allo_handler__
+                # infer type
+                arg_types, new_args = [], []
+                for arg in node.args:
+                    arg_ = self.visit(arg)
+                    # FIXME: pass shape and spec
+                    arg_types.append(getattr(arg_, "dtype", None))
+                    new_args.append(arg_)
+                # FIXME: assuming no kwargs for now
+                try:
+                    result_type, *other_types = BUILTIN_HANDLERS[name].infer(*arg_types)
+                except NotImplementedError:
+                    raise RuntimeError(f"Custom handler {name} must implement `infer`")
+
+                # FIXME: should support casting and broadcasting
+                call_node = ast.Call(
+                    func=ast.Attribute(
+                        value=ast.Name(id="__allo__", ctx=ast.Load()),
+                        attr=name,
+                        ctx=ast.Load(),
+                    ),
+                    args=new_args,
+                    keywords=[],
+                )
+                # FIXME: result dtype, shape?
+                return call_node
+        raise NotImplementedError
 
     def visit_FunctionDef(self, node: ast.FunctionDef, instantiate: list = None):
         with self.block_scope_guard():

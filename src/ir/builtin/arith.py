@@ -17,6 +17,7 @@ from allo._mlir.ir import (
     F64Type,
     UnitAttr,
     AffineExpr,
+    AffineConstantExpr,
 )
 from allo.ir.types import (
     AlloType,
@@ -293,7 +294,10 @@ class MultHandler(BuiltinHandler):
         expr_l = self.builder.get_affine_expr(node.args[0], ivs)
         expr_r = self.builder.get_affine_expr(node.args[1], ivs)
         if expr_l and expr_r:
-            return expr_l * expr_r
+            if isinstance(expr_l, AffineConstantExpr) or isinstance(
+                expr_r, AffineConstantExpr
+            ):
+                return expr_l * expr_r
         return None
 
 
@@ -334,7 +338,7 @@ class DivHandler(BuiltinHandler):
     def get_affine_expr(self, node: ast.Call, ivs: list):
         expr_l = self.builder.get_affine_expr(node.args[0], ivs)
         expr_r = self.builder.get_affine_expr(node.args[1], ivs)
-        if expr_l and expr_r:
+        if expr_l and expr_r and isinstance(expr_r, AffineConstantExpr):
             return AffineExpr.get_floor_div(expr_l, expr_r)
         return None
 
@@ -359,7 +363,7 @@ class FloorDivHandler(BuiltinHandler):
     def get_affine_expr(self, node: ast.Call, ivs: list):
         expr_l = self.builder.get_affine_expr(node.args[0], ivs)
         expr_r = self.builder.get_affine_expr(node.args[1], ivs)
-        if expr_l and expr_r:
+        if expr_l and expr_r and isinstance(expr_r, AffineConstantExpr):
             return AffineExpr.get_floor_div(expr_l, expr_r)
         return None
 
@@ -390,7 +394,7 @@ class ModHandler(BuiltinHandler):
     def get_affine_expr(self, node: ast.Call, ivs: list):
         expr_l = self.builder.get_affine_expr(node.args[0], ivs)
         expr_r = self.builder.get_affine_expr(node.args[1], ivs)
-        if expr_l and expr_r:
+        if expr_l and expr_r and isinstance(expr_r, AffineConstantExpr):
             return expr_l % expr_r
         return None
 

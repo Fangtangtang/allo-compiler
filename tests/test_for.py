@@ -97,13 +97,37 @@ def test_nested_affine_for():
     def kernel(A: int32[20]) -> int32[20]:
         for i in range(10):
             for j in range(2):
-                A[i * 2 + j] = i * 2 + j
+                A[i * (1 + 1 + 0) + j] = i * 2 + j
         return A
 
     s = process(kernel)
     np_A = np.zeros((20,), dtype=np.int32)
     gold = np.zeros((20,), dtype=np.int32)
     assert np.allclose(s(np_A), kernel(gold))
+
+    def kernel(A: int32[20]) -> int32[20]:
+        for i in range(5):
+            for j in range(4):
+                A[i * j] = A[i * j] + 1  # should not use affine load/store
+        return A
+
+    s = process(kernel)
+    np_A = np.zeros((20,), dtype=np.int32)
+    gold = np.zeros((20,), dtype=np.int32)
+    assert np.allclose(s(np_A), kernel(gold))
+
+    def kernel(A: int32[4, 5]) -> int32[4, 5]:
+        for i in range(4):
+            for j in range(5):
+                A[i, j] = i * j
+        return A
+
+    s = process(kernel)
+    np_A = np.zeros((4, 5), dtype=np.int32)
+    gold = np.zeros((4, 5), dtype=np.int32)
+    assert np.allclose(s(np_A), kernel(gold))
+
+    print("pass test_nested_affine_for")
 
 
 def test_vadd():

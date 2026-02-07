@@ -103,11 +103,9 @@ class ASTProcessor(ast.NodeTransformer):
             # if instantiate is not None, we need to use the args to instantiate the unique function
             assert len(module.body) == 1 and isinstance(module.body[0], ast.FunctionDef)
             node, top_name = self.visit_function_signature(module.body[0], instantiate)
-            self.worklist.append(top_name)
         else:
             if len(module.body) == 1:
                 node, top_name = self.visit_function_signature(module.body[0])
-                self.worklist.append(top_name)
             else:
                 # FIXME: tentative
                 top_name = None
@@ -810,7 +808,6 @@ class ASTProcessor(ast.NodeTransformer):
                 module: ast.Module = parse_ast(func)
                 assert len(module.body) == 1
                 callee, callee_name = self.visit_function_signature(module.body[0])
-                self.worklist.append(callee_name)
                 node.func.id = callee_name
                 # arguments TODO: support kwargs and others?
                 assert len(node.args) == len(
@@ -845,6 +842,7 @@ class ASTProcessor(ast.NodeTransformer):
         if func_name in self.symbol_table.functions:  # function instance visited
             return self.symbol_table.functions[func_name], func_name
         self.symbol_table.functions[func_name] = node  # record function
+        self.worklist.append(func_name)
         node.name = func_name
         # arguments
         for arg in node.args.args:

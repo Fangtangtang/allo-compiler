@@ -3,7 +3,7 @@
 
 import numpy as np
 from src.main import process
-from allo.ir.types import int32, float32, Int, ConstExpr
+from allo.ir.types import int32, float32, bool
 
 
 def test_basic_call():
@@ -104,6 +104,88 @@ def test_call_with_tensor_args():
     print("test_call_with_tensor_args passed")
 
 
+def test_call_recursive():
+    def helper_func(x: int32) -> int32:
+        ret: int32
+        if x == 0:
+            ret = 1
+        else:
+            ret = x * helper_func(x - 1)
+        return ret
+
+    def kernel(x: int32) -> int32:
+        ret: int32 = helper_func(x)
+        return ret
+
+    s = process(kernel)
+    assert s(2) == 2
+    assert s(3) == 6
+    assert s(4) == 24
+
+    def is_even(x: int32) -> bool:
+        ret: bool
+        if x == 0:
+            ret: bool = True
+        else:
+            ret: bool = is_odd(x - 1)
+        return ret
+
+    def is_odd(x: int32) -> bool:
+        ret: bool
+        if x == 0:
+            ret: bool = False
+        else:
+            ret: bool = is_even(x - 1)
+        return ret
+
+    def kernel2(x: int32) -> bool:
+        ret: bool = is_even(x)
+        return ret
+
+    s = process(kernel2)
+    assert s(2) == True
+    assert s(3) == False
+    assert s(4) == True
+
+    print("test_call_recursive passed")
+
+
+def test_call_casting():
+    def helper_func(x: int32) -> float32:
+        return x
+
+    def helper_func2(x: int32[4]) -> float32[4]:
+        return x + 1
+
+    def kernel(x: int32) -> float32:
+        return helper_func(x)
+
+    s = process(kernel)
+    assert s(2) == 2.0
+    assert s(3) == 3.0
+    assert s(-4) == -4.0
+
+    def kernel2(x: int32[4]) -> float32[4]:
+        return helper_func2(x)
+
+    s = process(kernel2)
+    assert np.array_equal(
+        s(np.array([2, 3, -4, 5]).astype(np.int32)), np.array([3.0, 4.0, -3.0, 6.0])
+    )
+
+    def kernel3(x: float32[4]) -> int32[4]:
+        return helper_func2(x)
+
+    s = process(kernel3)
+    assert np.array_equal(
+        s(np.array([2, 3, -4, 5]).astype(np.float32)), np.array([3, 4, -3, 6])
+    )
+
+    print("test_call_casting passed")
+
+
 if __name__ == "__main__":
-    test_basic_call()
-    test_call_with_tensor_args()
+    # test_basic_call()
+    # test_call_with_tensor_args()
+    # test_call_recursive()
+    test_call_casting()

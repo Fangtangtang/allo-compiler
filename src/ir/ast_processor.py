@@ -3,6 +3,7 @@
 
 import copy
 from typing import Union
+from collections import deque
 from collections.abc import Callable
 import ast
 from .utils import parse_ast, SymbolTable, BlockScopeGuard, Scope
@@ -32,7 +33,9 @@ class ASTProcessor(ast.NodeTransformer):
         self.global_symbols: dict = global_symbols
         self.typing_rule = typing_rule
         self.scopes: list[Scope] = []
-        self.current_func: list[str] = []
+
+        self.worklist: deque[ast.FunctionDef] = deque([])
+        self.current_func: str = None
 
     def visit(self, node):
         """
@@ -95,19 +98,26 @@ class ASTProcessor(ast.NodeTransformer):
             fn: The function to process.
             instantiate: The arguments to instantiate the function. default to None.
         """
-        ast_module: ast.Module = parse_ast(fn)
+        module: ast.Module = parse_ast(fn)
         if instantiate is not None:
             # if instantiate is not None, we need to use the args to instantiate the unique function
-            assert len(ast_module.body) == 1 and isinstance(
-                ast_module.body[0], ast.FunctionDef
-            )
-            return self.visit_FunctionDef(ast_module.body[0], instantiate)
+            assert len(module.body) == 1 and isinstance(module.body[0], ast.FunctionDef)
+            node, top_name = self.visit_function_signature(module.body[0], instantiate)
+            self.worklist.append(top_name)
         else:
-            if len(ast_module.body) == 1:
-                return self.visit(ast_module.body[0])
-            for stmt in ast_module.body:
-                self.visit(stmt)
-            return ast_module
+            if len(module.body) == 1:
+                node, top_name = self.visit_function_signature(module.body[0])
+                self.worklist.append(top_name)
+            else:
+                # FIXME: tentative
+                top_name = None
+                for stmt in module.body:
+                    self.visit(stmt)
+        while self.worklist:
+            self.visit_function_body(
+                self.symbol_table.functions[self.worklist.popleft()]
+            )
+        return module, top_name
 
     def eval_constant(self, node, consts=None):
         """
@@ -753,7 +763,7 @@ class ASTProcessor(ast.NodeTransformer):
     def visit_Return(self, node: ast.Return):
         # TODO: return a tuple (multiple return value)
         node.value = self.visit(node.value)
-        func_node = self.symbol_table.functions[self.current_func[-1]]
+        func_node = self.symbol_table.functions[self.current_func]
         node.value = self.visit_cast(node.value, func_node.dtype)
         node.value = self.visit_broadcast(node.value, func_node.dtype, func_node.shape)
         return node
@@ -796,66 +806,94 @@ class ASTProcessor(ast.NodeTransformer):
                 )
                 # FIXME: result dtype, shape?
                 return call_node
+            else:  # call another source kernel
+                module: ast.Module = parse_ast(func)
+                assert len(module.body) == 1
+                callee, callee_name = self.visit_function_signature(module.body[0])
+                self.worklist.append(callee_name)
+                node.func.id = callee_name
+                # arguments TODO: support kwargs and others?
+                assert len(node.args) == len(
+                    callee.args.args
+                ), f"Invalid call to {callee_name}, argument number mismatch."
+                new_args = []
+                for arg, callee_arg in zip(node.args, callee.args.args):
+                    # TODO: spec?
+                    arg = self.visit_cast(self.visit(arg), callee_arg.dtype)
+                    arg = self.visit_broadcast(arg, arg.dtype, callee_arg.shape)
+                    new_args.append(arg)
+                node.args = new_args
+                # return value
+                if hasattr(callee, "dtype") and hasattr(callee, "shape"):
+                    node.dtype, node.shape = callee.dtype, callee.shape
+                return node
         # TODO
         return node
 
-    def visit_FunctionDef(self, node: ast.FunctionDef, instantiate: list = None):
-        with self.block_scope_guard():
-            # instantiate an instance from template
-            if instantiate is not None:
-                func_name = self.symbol_table.name_mangling(node.name, instantiate)
-                assert hasattr(node, "type_params") and len(node.type_params) == len(
-                    instantiate
-                )
-                for type_var, call_val in zip(node.type_params, instantiate):
-                    name = type_var.name
-                raise NotImplementedError
+    def visit_function_signature(self, node: ast.FunctionDef, instantiate: list = None):
+        # instantiate an instance from template
+        if instantiate is not None:  # TODO: shall we copy node?
+            func_name = self.symbol_table.name_mangling(node.name, instantiate)
+            assert hasattr(node, "type_params") and len(node.type_params) == len(
+                instantiate
+            )
+            for type_var, call_val in zip(node.type_params, instantiate):
+                name = type_var.name
+            raise NotImplementedError
+        else:
+            func_name = node.name
+        if func_name in self.symbol_table.functions:  # function instance visited
+            return self.symbol_table.functions[func_name], func_name
+        self.symbol_table.functions[func_name] = node  # record function
+        node.name = func_name
+        # arguments
+        for arg in node.args.args:
+            arg.dtype, arg.shape, arg.spec = self.visit_type_annotation(arg.annotation)
+            if len(arg.shape) == 0:
+                arg.immutable = True  # [NOTE] scalar argument is defined as immutable, we don't allocate buffer for them
+            arg.annotation = self.get_ast_annotaiton(arg.dtype, arg.shape, arg.spec)
+            assert not getattr(
+                arg.dtype, "stateful", False
+            ), f"Function parameter '{arg.arg}' cannot be Stateful."
+            # FIXME: this assumes functions are under global scope
+            assert arg.arg not in self.global_symbols, (
+                f"Argument name '{arg.arg}' conflicts with an existing symbol. "
+                "Please choose a different name to avoid the conflict."
+            )
+        # return type
+        if node.returns is not None:
+            if isinstance(node.returns, ast.Tuple):
+                # Multiple return values
+                node.returns.shape = []
+                node.returns.dtype = []
+                node.returns.spec = []
+                new_elts = []
+                for elt in node.returns.elts:
+                    elt.dtype, elt.shape, elt.spec = self.visit_type_annotation(elt)
+                    node.returns.dtype.append(elt.dtype)
+                    node.returns.shape.append(elt.shape)
+                    node.returns.spec.append(elt.spec)
+                    new_elts.append(
+                        self.get_ast_annotaiton(elt.dtype, elt.shape, elt.spec)
+                    )
+                node.returns.elts = new_elts
             else:
-                func_name = node.name
+                # Single return value
+                dtype, shape, spec = self.visit_type_annotation(node.returns)
+                node.returns = self.get_ast_annotaiton(dtype, shape, spec)
+                node.returns.dtype = dtype
+                node.returns.shape = shape
+                node.returns.spec = spec
+            node.dtype, node.shape = node.returns.dtype, node.returns.shape
+        return node, func_name
+
+    def visit_function_body(self, node: ast.FunctionDef):
+        with self.block_scope_guard():
             # arguments
             for arg in node.args.args:
-                arg.dtype, arg.shape, arg.spec = self.visit_type_annotation(
-                    arg.annotation
-                )
-                if len(arg.shape) == 0:
-                    arg.immutable = True  # [NOTE] scalar argument is defined as immutable, we don't allocate buffer for them
-                arg.annotation = self.get_ast_annotaiton(arg.dtype, arg.shape, arg.spec)
-                assert not getattr(
-                    arg.dtype, "stateful", False
-                ), f"Function parameter '{arg.arg}' cannot be Stateful."
-                assert self.get_symbol(name=arg.arg, allow_missing=True) is None, (
-                    f"Argument name '{arg.arg}' conflicts with an existing symbol. "
-                    f"Please choose a different name to avoid the conflict."
-                )
                 self.put_var(name=arg.arg, val=arg)
-            # return type
-            if node.returns is not None:
-                if isinstance(node.returns, ast.Tuple):
-                    # Multiple return values
-                    node.returns.shape = []
-                    node.returns.dtype = []
-                    node.returns.spec = []
-                    new_elts = []
-                    for elt in node.returns.elts:
-                        elt.dtype, elt.shape, elt.spec = self.visit_type_annotation(elt)
-                        node.returns.dtype.append(elt.dtype)
-                        node.returns.shape.append(elt.shape)
-                        node.returns.spec.append(elt.spec)
-                        new_elts.append(
-                            self.get_ast_annotaiton(elt.dtype, elt.shape, elt.spec)
-                        )
-                    node.returns.elts = new_elts
-                else:
-                    # Single return value
-                    dtype, shape, spec = self.visit_type_annotation(node.returns)
-                    node.returns = self.get_ast_annotaiton(dtype, shape, spec)
-                    node.returns.dtype = dtype
-                    node.returns.shape = shape
-                    node.returns.spec = spec
-                node.dtype, node.shape = node.returns.dtype, node.returns.shape
             # function body
-            self.symbol_table.functions[func_name] = node
-            self.current_func.append(func_name)
+            self.current_func = node.name
             new_body = []
             for stmt in node.body:
                 res = self.visit(stmt)
@@ -866,8 +904,13 @@ class ASTProcessor(ast.NodeTransformer):
             if node.returns is None and not isinstance(new_body[-1], ast.Return):
                 new_body.append(ast.Return())
             node.body = new_body
-            self.current_func.pop()
+            self.current_func = None
         return node
+
+    def visit_FunctionDef(self, node: ast.FunctionDef, instantiate: list = None):
+        # TODO: when will we use this? df.region?
+        node, _ = self.visit_function_signature(node, instantiate=instantiate)
+        return self.visit_function_body(node)
 
     # ----- invalid syntax -----
     def visit_Break(self, node: ast.Break):

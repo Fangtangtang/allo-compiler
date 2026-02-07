@@ -17,9 +17,11 @@ def process(fn: Union[Callable, str], instantiate: list = None):
     symbol_table = SymbolTable()
     ast_processor = ASTProcessor(symbol_table, global_symbols=get_global_vars(fn))
     # process the top function
-    node = ast_processor.process(fn, instantiate=instantiate)
-    print(ast.unparse(node), "\n")
+    node, top_name = ast_processor.process(fn, instantiate=instantiate)
+    for node in symbol_table.functions.values():
+        print(ast.unparse(node), "\n")
+    print()
     builder = IRBuilder(symbol_table)
     module = builder.build(node)
     print(module)
-    return LLVMModule(module, fn.__name__)
+    return LLVMModule(module, top_name)

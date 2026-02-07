@@ -124,7 +124,8 @@ class IRBuilder(ast.NodeVisitor):
         with self.ctx, Location.unknown():
             self.module = Module.create()
             self.set_ip(self.module.body)
-            self.visit(ast_module)
+            for func_node in self.symbol_table.functions.values():
+                self.visit(func_node)
             self.pop_ip()
             return self.module
 
@@ -505,6 +506,21 @@ class IRBuilder(ast.NodeVisitor):
                 assert name in BUILTIN_HANDLERS
                 handler = self.get_builtin_handler(name)
                 return handler.build(node)
+        if isinstance(node.func, ast.Name):
+            callee_name = node.func.id
+            callee = self.symbol_table.functions[callee_name]
+            rets = (
+                callee.returns.elts
+                if isinstance(callee.returns, ast.Tuple)
+                else [callee.returns] if callee.returns is not None else []
+            )
+            call_op = func_d.CallOp(
+                [self.build_type(ret)[0] for ret in rets],
+                FlatSymbolRefAttr.get(callee_name),
+                [self.get_op_result(self.visit(arg)) for arg in node.args],
+                ip=self.get_ip(),
+            )
+            return call_op
         raise NotImplementedError
 
     def visit_FunctionDef(self, node: ast.FunctionDef):

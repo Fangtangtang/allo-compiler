@@ -582,7 +582,7 @@ class ASTProcessor(ast.NodeTransformer):
             if isinstance(node.targets[0], ast.Tuple)
             else [node.targets[0]]
         )
-        if isinstance(node.value, ast.Call):
+        if isinstance(node.value, ast.Call) and len(targets) > 1:
             raise NotImplementedError
         values = node.value.elts if isinstance(node.value, ast.Tuple) else [node.value]
         assert len(targets) == len(values)

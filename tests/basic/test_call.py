@@ -43,6 +43,21 @@ def test_basic_call():
     assert s(3) == 36
     assert s(-4) == 64
 
+    def kernel4(x: int32) -> int32[4]:
+        ret: int32[4]
+        ret[0], ret[1], ret[2], ret[3] = (
+            helper_func(x),
+            helper_func(x),
+            helper_func(x),
+            helper_func(x),
+        )
+        return ret
+
+    s = process(kernel4)
+    assert np.array_equal(s(2), np.array([4, 4, 4, 4]))
+    assert np.array_equal(s(3), np.array([6, 6, 6, 6]))
+    assert np.array_equal(s(-4), np.array([-8, -8, -8, -8]))
+
     print("test_basic_call passed")
 
 
@@ -125,17 +140,17 @@ def test_call_recursive():
     def is_even(x: int32) -> bool:
         ret: bool
         if x == 0:
-            ret: bool = True
+            ret = True
         else:
-            ret: bool = is_odd(x - 1)
+            ret = is_odd(x - 1)
         return ret
 
     def is_odd(x: int32) -> bool:
         ret: bool
         if x == 0:
-            ret: bool = False
+            ret = False
         else:
-            ret: bool = is_even(x - 1)
+            ret = is_even(x - 1)
         return ret
 
     def kernel2(x: int32) -> bool:
@@ -185,7 +200,7 @@ def test_call_casting():
 
 
 if __name__ == "__main__":
-    # test_basic_call()
-    # test_call_with_tensor_args()
-    # test_call_recursive()
+    test_basic_call()
+    test_call_with_tensor_args()
+    test_call_recursive()
     test_call_casting()

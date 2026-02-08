@@ -858,11 +858,11 @@ class ASTProcessor(ast.NodeTransformer):
         # instantiate an instance from template
         if instantiate is not None:  # TODO: shall we copy node?
             func_name = self.symbol_table.name_mangling(node.name, instantiate)
-            assert hasattr(node, "type_params") and len(node.type_params) == len(
-                instantiate
-            )
+            assert len(getattr(node, "type_params", [])) == len(instantiate)
             node.template_bindings = {}
             for type_var, call_val in zip(node.type_params, instantiate):
+                if type_var.bound is not None:
+                    raise NotImplementedError
                 node.template_bindings[type_var.name] = call_val
         else:
             func_name = node.name

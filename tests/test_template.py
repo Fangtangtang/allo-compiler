@@ -35,14 +35,7 @@ def test_basic_template():
     np_B = s(np_A)
     assert np.array_equal(np_B, np_A + 1)
 
-    print("test_basic_template passed")
-
-
-def test_template():
-
-    def kernel[
-        TyA, TyB, TyC, M: int32, K: int32, N: int32
-    ](A: "TyA[M, K]", B: "TyB[K, N]") -> "TyC[M, N]":
+    def kernel[TyA, TyB, TyC, M, K, N](A: "TyA[M, K]", B: "TyB[K, N]") -> "TyC[M, N]":
         C: TyC[M, N]
         for i in range(M):
             for j in range(N):
@@ -66,9 +59,8 @@ def test_template():
     allo_C = s(np_A, np_B)
     assert np.array_equal(np_C, allo_C)
 
-    print("test_template passed")
+    print("test_basic_template passed")
 
 
 if __name__ == "__main__":
     test_basic_template()
-    test_template()

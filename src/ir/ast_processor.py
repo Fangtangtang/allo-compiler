@@ -3,7 +3,7 @@
 
 import copy
 from typing import Union
-from collections import deque
+from collections import deque, ChainMap
 from collections.abc import Callable
 import ast
 from .utils import parse_ast, SymbolTable, BlockScopeGuard, Scope
@@ -36,6 +36,7 @@ class ASTProcessor(ast.NodeTransformer):
 
         self.worklist: deque[ast.FunctionDef] = deque([])
         self.current_func: str = None
+        self.symbols = global_symbols
 
     def visit(self, node):
         """
@@ -127,18 +128,18 @@ class ASTProcessor(ast.NodeTransformer):
         """
         if consts is None:
             consts = self.get_consts()
-            consts.update(self.global_symbols)
+            consts.update(self.symbols)
         return eval(
             compile(ast.fix_missing_locations(ast.Expression(node)), "", "eval"), consts
         )
 
     def resolve_node(self, node: ast.AST):
         if isinstance(node, ast.Name):
-            return self.global_symbols[node.id]  # limited to single-level symbol lookup
+            return self.symbols[node.id]  # limited to single-level symbol lookup
         if isinstance(node, ast.Call):
-            ty_cls = self.global_symbols[node.func.id]
+            ty_cls = self.symbols[node.func.id]
             consts = self.get_consts()
-            consts.update(self.global_symbols)
+            consts.update(self.symbols)
             args = [self.eval_constant(arg, consts=consts) for arg in node.args]
             kwargs = {
                 kw.arg: self.eval_constant(kw.value, consts=consts)
@@ -198,12 +199,10 @@ class ASTProcessor(ast.NodeTransformer):
             # e.g., B: Int(32) @ Stateful = 0, a: int32[32] @ Memory(resource="URAM")
             assert isinstance(annotation.op, ast.MatMult)
             dtype, shape, spec = self.visit_type_annotation(annotation.left)
-            if isinstance(annotation.right, ast.Name):
+            if isinstance(annotation.right, (ast.Name, ast.Call)):
                 # 1.    B: Int(32) @ Stateful = 0
                 # 2.    mm = Memory(resource="URAM") # defined in 'global' scope
                 #       a: int32[32] @ mm
-                refinement_type = self.global_symbols[annotation.right.id]
-            elif isinstance(annotation.right, ast.Call):
                 # a: int32[32] @ Memory(resource="URAM")
                 refinement_type = self.resolve_node(annotation.right)
             elif isinstance(annotation.right, ast.List):
@@ -218,6 +217,10 @@ class ASTProcessor(ast.NodeTransformer):
             if isinstance(refinement_type, list):
                 refinement_type = Layout(refinement_type)
             return dtype, shape, refinement_type
+        if isinstance(annotation, ast.Constant):
+            assert isinstance(annotation.value, str)
+            tree = ast.parse(annotation.value)
+            return self.visit_type_annotation(tree.body[0].value)
         raise NotImplementedError
 
     def get_ast_annotaiton(
@@ -858,9 +861,9 @@ class ASTProcessor(ast.NodeTransformer):
             assert hasattr(node, "type_params") and len(node.type_params) == len(
                 instantiate
             )
+            node.template_bindings = {}
             for type_var, call_val in zip(node.type_params, instantiate):
-                name = type_var.name
-            raise NotImplementedError
+                node.template_bindings[type_var.name] = call_val
         else:
             func_name = node.name
         if func_name in self.symbol_table.functions:  # function instance visited
@@ -868,6 +871,10 @@ class ASTProcessor(ast.NodeTransformer):
         self.symbol_table.functions[func_name] = node  # record function
         self.worklist.append(func_name)
         node.name = func_name
+        old_symbols = self.symbols
+        self.symbols = ChainMap(
+            getattr(node, "template_bindings", {}), self.global_symbols
+        )
         # arguments
         for arg in node.args.args:
             arg.dtype, arg.shape, arg.spec = self.visit_type_annotation(arg.annotation)
@@ -907,9 +914,13 @@ class ASTProcessor(ast.NodeTransformer):
                 node.returns.shape = shape
                 node.returns.spec = spec
             node.dtype, node.shape = node.returns.dtype, node.returns.shape
+        self.symbols = old_symbols
         return node, func_name
 
     def visit_function_body(self, node: ast.FunctionDef):
+        self.symbols = ChainMap(
+            getattr(node, "template_bindings", {}), self.global_symbols
+        )
         with self.block_scope_guard():
             # arguments
             for arg in node.args.args:
@@ -927,6 +938,7 @@ class ASTProcessor(ast.NodeTransformer):
                 new_body.append(ast.Return())
             node.body = new_body
             self.current_func = None
+        self.symbols = self.global_symbols
         return node
 
     def visit_FunctionDef(self, node: ast.FunctionDef, instantiate: list = None):

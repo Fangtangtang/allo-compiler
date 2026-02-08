@@ -142,6 +142,23 @@ def test_nested_affine_for():
     gold = np.zeros((4, 5), dtype=np.int32)
     assert np.allclose(s(np_A), kernel(gold))
 
+    def kernel(A: float32[32, 32], B: float32[32, 32]) -> float32[32, 32]:
+        C: float32[32, 32]
+        for i in range(32):
+            for j in range(32):
+                acc: float32 = 0
+                for k in range(32):
+                    acc += A[i, k] * B[k, j]
+                C[i, j] = acc
+        return C
+
+    s = process(kernel)
+    np_A = np.random.randn(32, 32).astype(np.float32)
+    np_B = np.random.randn(32, 32).astype(np.float32)
+    np_C = np.matmul(np_A, np_B)
+    allo_C = s(np_A, np_B)
+    np.testing.assert_allclose(np_C, allo_C, rtol=1e-4, atol=1e-4)
+
     print("pass test_nested_affine_for")
 
 

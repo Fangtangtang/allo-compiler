@@ -7,7 +7,6 @@ import textwrap
 from collections.abc import Callable
 from types import FunctionType as PyFunctionType
 from allo.ir.types import AlloType
-from allo.ir.utils import MockOp
 from allo.memory import Memory
 
 
@@ -143,12 +142,3 @@ class BlockScopeGuard:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.scopes.pop()
-
-
-class MockCallResultTuple(MockOp):
-    def __init__(self, results):
-        self.res = results
-
-    @property
-    def results(self):
-        return self.res

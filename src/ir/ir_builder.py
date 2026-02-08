@@ -46,8 +46,8 @@ from allo._mlir.ir import (
     StridedLayoutAttr,
 )
 from allo.utils import register_dialect
-from allo.ir.utils import MockArg, MockScalar, MockBuffer
-from .utils import SymbolTable, BlockScopeGuard, Scope, MockCallResultTuple
+from allo.ir.utils import MockArg, MockScalar, MockBuffer, MockCallResultTuple
+from .utils import SymbolTable, BlockScopeGuard, Scope
 from .builtin import BUILTIN_HANDLERS
 
 

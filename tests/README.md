@@ -1,15 +1,47 @@
 # Allo Compiler Tests
 
-This directory contains the test suite.
+This directory contains the test suite for the Allo compiler, organized by feature stability and category.
 
 ## Directory Structure
 
-- `basic`: Contains basic functionality tests (assignment, binary operations, branching, logic, loops, function calls) that have passed.
-- `test_*.py` files in the root of this directory cover other features under development.
+### `tests/basic`
+Contains verified tests for core language features that are fully supported.
 
+- **Data Types & Memory**:
+  - `test_assign.py`: Variable assignment and scalar operations.
+  - `test_subscript.py`: Array/Tensor indexing and access.
+  - `test_cast_*.py`: Type casting (basic types, binary operations, tensors).
+
+- **Control Flow**:
+  - `test_branch.py`: Conditional statements (if/else).
+  - `test_for.py`: For loops.
+  - `test_while.py`: While loops.
+
+- **Operations**:
+  - `test_binary.py`: Binary arithmetic and logical operations.
+  - `test_unary.py`: Unary operations.
+
+- **Functions & Modules**:
+  - `test_call.py`: Function calls.
+  - `test_multi_return.py`: Functions returning multiple values.
+  - `test_template.py`: Template functions and parametrization.
+
+### `tests/` (Root)
+Contains tests for advanced or experimental features currently under development.
+
+- **Customization**:
+  - `test_custom_handler.py`: Custom instruction handlers and behavior overrides.
+
+- ...
 ## Running Tests
 
-To run the tests, use `pytest`:
+To run the full test suite, use `pytest` from the project root (currently fail):
+
+```bash
+pytest tests
+```
+
+To run only the verified basic tests:
 
 ```bash
 pytest tests/basic

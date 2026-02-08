@@ -800,6 +800,27 @@ class ASTProcessor(ast.NodeTransformer):
         # e.g., with allo.meta_if(cond):
         raise NotImplementedError
 
+    def visit_call_kernel(self, orig_node: ast.Call, func, instantiate: list = None):
+        module: ast.Module = parse_ast(func)
+        assert len(module.body) == 1
+        callee, callee_name = self.visit_function_signature(module.body[0], instantiate)
+        # arguments TODO: support kwargs and others?
+        assert len(orig_node.args) == len(
+            callee.args.args
+        ), f"Invalid call to {callee_name}, argument number mismatch."
+        new_args = []
+        for arg, callee_arg in zip(orig_node.args, callee.args.args):
+            # TODO: spec?
+            arg = self.visit_cast(self.visit(arg), callee_arg.dtype)
+            arg = self.visit_broadcast(arg, arg.dtype, callee_arg.shape)
+            new_args.append(arg)
+        orig_node.args = new_args
+        # return value
+        if hasattr(callee, "dtype") and hasattr(callee, "shape"):
+            orig_node.dtype, orig_node.shape = callee.dtype, callee.shape
+        orig_node.func = ast.Name(id=callee_name, ctx=ast.Load())
+        return orig_node
+
     def visit_Call(self, node: ast.Call):
         if isinstance(node.func, ast.Name):
             # FIXME: tentative!!!
@@ -832,25 +853,16 @@ class ASTProcessor(ast.NodeTransformer):
                 # FIXME: result dtype, shape?
                 return call_node
             else:  # call another source kernel
-                module: ast.Module = parse_ast(func)
-                assert len(module.body) == 1
-                callee, callee_name = self.visit_function_signature(module.body[0])
-                node.func.id = callee_name
-                # arguments TODO: support kwargs and others?
-                assert len(node.args) == len(
-                    callee.args.args
-                ), f"Invalid call to {callee_name}, argument number mismatch."
-                new_args = []
-                for arg, callee_arg in zip(node.args, callee.args.args):
-                    # TODO: spec?
-                    arg = self.visit_cast(self.visit(arg), callee_arg.dtype)
-                    arg = self.visit_broadcast(arg, arg.dtype, callee_arg.shape)
-                    new_args.append(arg)
-                node.args = new_args
-                # return value
-                if hasattr(callee, "dtype") and hasattr(callee, "shape"):
-                    node.dtype, node.shape = callee.dtype, callee.shape
-                return node
+                return self.visit_call_kernel(node, func)
+        if isinstance(node.func, ast.Subscript):  # call an instantiated kernel
+            elts = (
+                node.func.slice.elts
+                if isinstance(node.func.slice, ast.Tuple)
+                else [node.func.slice]
+            )
+            instantiate = [self.eval_constant(e) for e in elts]
+            func = self.resolve_node(node.func.value)
+            return self.visit_call_kernel(node, func, instantiate)
         # TODO
         return node
 

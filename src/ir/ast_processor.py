@@ -18,7 +18,6 @@ from allo.ir.types import (
     Index,
     bool as allo_bool,
 )
-from allo.utils import np_supported_types
 from allo.memory import Layout
 from .builtin import BUILTIN_HANDLERS
 
@@ -259,6 +258,42 @@ class ASTProcessor(ast.NodeTransformer):
             ctx=ast.Load(),
         )
 
+    def finalize_dtype(self, node: ast.AST, target_dtype: AlloType = None):
+        """
+        Dtypes can be deferred until a concrete type is required.
+        This method resolves the final dtype for the given node.
+        """
+        from allo.utils import np_supported_types, np_dtype_to_allo_dtype
+
+        node_value = getattr(node, "value", None)
+        assert node_value is not None, "only support deferred dtype for constants"
+        try:
+            if target_dtype is None:
+                target_dtype = np_dtype_to_allo_dtype[node_value.dtype]
+            else:
+                node_value = node.value.astype(np_supported_types[str(target_dtype)])
+        except:
+            raise RuntimeError(f"Fail to finalize dtype for {ast.dump(node)}")
+        # untyped global constant
+        node.dtype = target_dtype
+        # add a new global op
+        call = ast.Call(
+            func=ast.Attribute(
+                value=ast.Name(id="__allo__", ctx=ast.Load()),
+                attr="constant_tensor",
+                ctx=ast.Load(),
+            ),
+            args=[
+                node,  # tensor name
+                node,  # init value symbol
+                self.get_ast_annotaiton(target_dtype, node.shape, None),
+            ],
+            keywords=[],
+        )
+        self.symbol_table.global_symbols[node.id] = node_value
+        self.symbol_table.global_ops.append(call)
+        return node
+
     def visit_broadcast(
         self, node: ast.AST, dtype: AlloType, target_shape: tuple[int]
     ) -> ast.AST:
@@ -322,28 +357,8 @@ class ASTProcessor(ast.NodeTransformer):
                 keywords=[],
             )
             node.dtype, node.shape = target_dtype, shape
-        if isinstance(node, ast.Name) and not hasattr(node, "dtype"):
-            # untyped global constant
-            node.dtype = target_dtype
-            # add a new global op
-            call = ast.Call(
-                func=ast.Attribute(
-                    value=ast.Name(id="__allo__", ctx=ast.Load()),
-                    attr="constant_tensor",
-                    ctx=ast.Load(),
-                ),
-                args=[
-                    node,  # tensor name
-                    node,  # init value symbol
-                    self.get_ast_annotaiton(target_dtype, node.shape, None),
-                ],
-                keywords=[],
-            )
-            assert str(target_dtype) in np_supported_types
-            self.symbol_table.global_symbols[node.id] = node.value.astype(
-                np_supported_types[str(target_dtype)]
-            )  # construct np array vlaue with target dtype
-            self.symbol_table.global_ops.append(call)
+        if not hasattr(node, "dtype"):
+            node = self.finalize_dtype(node, target_dtype)
         if node.dtype == target_dtype:
             return node
         # infer specific handler using CastHandler (abstract class for all cast handlers)
@@ -371,7 +386,10 @@ class ASTProcessor(ast.NodeTransformer):
         call_node.shape = node.shape
         return call_node
 
-    def visit_constant(self, value):
+    def visit_constant(self, node):
+        value = self.eval_constant(node)
+        if isinstance(value, list):
+            value = np.array(value)
         if isinstance(value, np.ndarray):
             name = f"np_arr_{SymbolTable.get_hash(value)}"
             node = self.get_symbol(name, allow_missing=True)
@@ -394,12 +412,11 @@ class ASTProcessor(ast.NodeTransformer):
             node.dtype, node.shape = var.dtype, var.shape
             return node
         # compile time constant
-        return self.visit_constant(self.eval_constant(node))
+        return self.visit_constant(node)
 
-    def visit_List(self, node):  # constant tensor
+    def visit_List(self, node: ast.List):  # constant tensor
         try:
-            np_array = np.array(self.eval_constant(node))
-            return self.visit_constant(np_array)
+            return self.visit_constant(node)
         except:
             raise RuntimeError("List constant evaluation failed")
 
@@ -417,6 +434,10 @@ class ASTProcessor(ast.NodeTransformer):
     def visit_Subscript(self, node: ast.Subscript):
         # e.g., A[i], A[i, j]
         # slice: A[0:10], A[::-1]
+        try:
+            return self.visit_constant(node)  # parse as compile time constant
+        except:
+            pass
         value = self.visit(node.value)
         if len(value.shape) > 0:
             # tensor subscript
@@ -443,7 +464,10 @@ class ASTProcessor(ast.NodeTransformer):
                     elt_ = self.visit_cast(elt_, Index())
                 new_elts.append(elt_)
             shape.extend(value.shape[len(elts) :])
+            if not hasattr(value, "dtype"):
+                value = self.finalize_dtype(value)
             node.dtype, node.shape = value.dtype, tuple(shape)
+            node.value = value
             if isinstance(node.slice, ast.Tuple):
                 node.slice.elts = new_elts
             else:
@@ -716,6 +740,7 @@ class ASTProcessor(ast.NodeTransformer):
                 target_.dtype, "constexpr", False
             ), "Cannot reassign constants."
         if getattr(dtype, "constexpr", False):
+            # TODO: scalar only?
             node.value = ast.Constant(self.eval_constant(node.value))
             self.put_const(node.target.id, node.value)
             node.value.dtype, node.value.shape = dtype, shape

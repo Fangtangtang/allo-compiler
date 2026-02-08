@@ -11,6 +11,7 @@ Contains verified tests for core language features that are fully supported.
   - `test_assign.py`: Variable assignment and scalar operations.
   - `test_subscript.py`: Array/Tensor indexing and access.
   - `test_cast_*.py`: Type casting (basic types, binary operations, tensors).
+  - `test_np_arr.py`: NumPy array initialization, slicing, and operations.
 
 - **Control Flow**:
   - `test_branch.py`: Conditional statements (if/else).

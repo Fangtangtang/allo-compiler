@@ -3,7 +3,7 @@
 
 from src.main import process
 import numpy as np
-from allo.ir.types import int16, int32, float32, bool, ConstExpr
+from allo.ir.types import int16, int32, float32, bool, index
 
 
 def test_np_array():
@@ -100,5 +100,59 @@ def test_np_array():
     print("test_np_array passed")
 
 
+def test_np_array_slice():
+    arr = np.array([[1, 2], [3, 4]])
+
+    def kernel1() -> int32[2, 2]:
+        ret: int32[2, 2]
+        ret[0] = arr[0]
+        ret[1] = arr[1]
+        return ret
+
+    s = process(kernel1)
+    assert np.array_equal(s(), arr)
+
+    def kernel1() -> int32[2, 2]:
+        ret: int32[2, 2]
+        ret[0] = [[1, 2], [3, 4]][0]
+        ret[1] = [[1, 2], [3, 4]][1]
+        return ret
+
+    s = process(kernel1)
+    assert np.array_equal(s(), arr)
+
+    def kernel2() -> int32[2, 2]:
+        ret: int32[2, 2]
+        idx: index = 0
+        ret[idx] = arr[idx]
+        ret[idx + 1] = arr[idx + 1]
+        return ret
+
+    s = process(kernel2)
+    assert np.array_equal(s(), arr)
+
+    def kernel3() -> int32[2, 2]:
+        ret: int32[2, 2]
+        idx: index = 1
+        ret[0] = 1
+        ret[idx] = arr[idx]
+        return ret
+
+    s = process(kernel3)
+    assert np.array_equal(s(), np.array([[1, 1], [3, 4]]))
+
+    def kernel4() -> int32[2, 2]:
+        ret: int32[2, 2]
+        for idx in range(2):
+            ret[idx] = arr[idx]
+        return ret
+
+    s = process(kernel4)
+    assert np.array_equal(s(), arr)
+
+    print("test_np_array_slice passed")
+
+
 if __name__ == "__main__":
     test_np_array()
+    test_np_array_slice()

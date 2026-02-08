@@ -578,14 +578,29 @@ class ASTProcessor(ast.NodeTransformer):
             if isinstance(node.targets[0], ast.Tuple)
             else [node.targets[0]]
         )
+        node_list = []
         if isinstance(node.value, ast.Call) and len(targets) > 1:
-            raise NotImplementedError
-        values = node.value.elts if isinstance(node.value, ast.Tuple) else [node.value]
+            callee = self.visit(node.value)
+            result_name = f"_res_{id(callee)}"  # unique name
+            call_node = ast.Assign(
+                targets=[ast.Name(id=result_name, ctx=ast.Store())], value=callee
+            )
+            ast.copy_location(call_node, node)
+            node_list.append(call_node)
+            values = []
+            res = ast.Name(id=result_name, ctx=ast.Load())
+            for i, (dtype, shape) in enumerate(zip(callee.dtype, callee.shape)):
+                value = ast.Subscript(value=res, slice=ast.Constant(i), ctx=ast.Load())
+                value.dtype, value.shape = dtype, shape  # TODO: spec
+                values.append(value)
+        else:
+            values = (
+                node.value.elts if isinstance(node.value, ast.Tuple) else [node.value]
+            )
+            values = [self.visit(value) for value in values]
         assert len(targets) == len(values)
         # FIXME: this has the potential issue of serializing simultaneous assignment
-        node_list = []
-        for target, value in zip(targets, values):
-            rhs = self.visit(value)
+        for target, rhs in zip(targets, values):
             if isinstance(target, ast.Name):
                 target_ = self.get_symbol(target.id, allow_missing=True)
                 if target_ is None:

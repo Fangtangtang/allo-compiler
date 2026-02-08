@@ -47,7 +47,7 @@ from allo._mlir.ir import (
 )
 from allo.utils import register_dialect
 from allo.ir.utils import MockArg, MockScalar, MockBuffer
-from .utils import SymbolTable, BlockScopeGuard, Scope
+from .utils import SymbolTable, BlockScopeGuard, Scope, MockCallResultTuple
 from .builtin import BUILTIN_HANDLERS
 
 
@@ -117,6 +117,8 @@ class IRBuilder(ast.NodeVisitor):
             return val.result
         if isinstance(val, MockArg):
             return val.result
+        if isinstance(val, MockCallResultTuple):
+            return val
         assert isinstance(val, Value), f"Fail to resolve op result: {val}"
         return val
 
@@ -163,7 +165,10 @@ class IRBuilder(ast.NodeVisitor):
         var = self.get_symbol(node.id)
         if isinstance(node.ctx, ast.Load):
             var = self.get_op_result(var)
-            if isinstance(var.type, MemRefType) and len(var.type.shape) == 0:
+            if (
+                isinstance(getattr(var, "type", None), MemRefType)
+                and len(var.type.shape) == 0
+            ):
                 # load scalar from memref
                 affine_map = AffineMap.get_identity(0)
                 affine_attr = AffineMapAttr.get(affine_map)
@@ -218,6 +223,9 @@ class IRBuilder(ast.NodeVisitor):
 
     def visit_Subscript(self, node: ast.Subscript, val=None):
         base = self.get_op_result(self.visit(node.value))
+        if isinstance(base, MockCallResultTuple):
+            # [NOTE] special case handling for function call with multiple return
+            return base.results[node.slice.value]
         shape: list[int] = base.type.shape  # tensor shape
         layout = base.type.layout
         elts = node.slice.elts if isinstance(node.slice, ast.Tuple) else [node.slice]
@@ -349,6 +357,13 @@ class IRBuilder(ast.NodeVisitor):
                 ip=self.get_ip(),
             )
         return result
+
+    def visit_Assign(self, node: ast.Assign):
+        # [NOTE]: only used for special case (call a function with multiple returns)
+        assert len(node.targets) == 1 and isinstance(node.value, ast.Call)
+        call_op = self.visit(node.value)
+        assert self.get_symbol(name=node.targets[0].id, allow_missing=True) is None
+        self.put_var(node.targets[0].id, val=MockCallResultTuple(call_op.results))
 
     def visit_AnnAssign(self, node: ast.AnnAssign):
         value = (

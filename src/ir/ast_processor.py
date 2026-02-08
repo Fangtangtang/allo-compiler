@@ -371,6 +371,21 @@ class ASTProcessor(ast.NodeTransformer):
         call_node.shape = node.shape
         return call_node
 
+    def visit_constant(self, value):
+        if isinstance(value, np.ndarray):
+            name = f"np_arr_{SymbolTable.get_hash(value)}"
+            node = self.get_symbol(name, allow_missing=True)
+            if node is not None:
+                return node
+            node = ast.Name(id=name, ctx=ast.Load())  # refer to the global const tensor
+            node.shape = value.shape
+            node.value = value
+            self.put_const(name, node, is_global=True)
+            return node
+        node = ast.Constant(value)
+        node.shape = tuple()
+        return node
+
     def visit_Name(self, node: ast.Name):
         var = self.get_symbol(node.id, allow_missing=True)
         if var is not None:
@@ -378,9 +393,15 @@ class ASTProcessor(ast.NodeTransformer):
                 return var
             node.dtype, node.shape = var.dtype, var.shape
             return node
-        const_node = ast.Constant(self.eval_constant(node))
-        const_node.shape = tuple()
-        return const_node
+        # compile time constant
+        return self.visit_constant(self.eval_constant(node))
+
+    def visit_List(self, node):  # constant tensor
+        try:
+            np_array = np.array(self.eval_constant(node))
+            return self.visit_constant(np_array)
+        except:
+            raise RuntimeError("List constant evaluation failed")
 
     def visit_Constant(self, node: ast.Constant):
         # e.g., 1, 1.0, True, False
@@ -443,21 +464,6 @@ class ASTProcessor(ast.NodeTransformer):
         else:
             node.step = ast.Constant(value=1)
         return node
-
-    def visit_List(self, node):  # constant tensor
-        try:
-            np_array = np.array(self.eval_constant(node))
-            name = f"np_arr_{SymbolTable.get_hash(np_array)}"
-            node = self.get_symbol(name, allow_missing=True)
-            if node is not None:
-                return node
-            node = ast.Name(id=name, ctx=ast.Load())  # refer to the global const tensor
-            node.shape = np_array.shape
-            node.value = np_array
-            self.put_const(name, node, is_global=True)
-            return node
-        except:
-            raise RuntimeError("List constant evaluation failed")
 
     def visit_UnaryOp(self, node: ast.UnaryOp):
         # e.g., +x, -x, not x

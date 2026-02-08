@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import ast
+import numpy as np
 from .handler import BuiltinHandler, register_builtin_handler, TypingRule
 from allo._mlir.dialects import (
     allo as allo_d,
@@ -75,6 +76,9 @@ def dummy_binary_arith_rule():
         (int, Int): lambda v1, t2: (t2, t2, t2),
         (Int, float): lambda t1, v2: (Float(64), Float(64), Float(64)),
         (float, Int): lambda v1, t2: (Float(64), Float(64), Float(64)),
+        # numpy array
+        (Int, np.ndarray): lambda t1, v2: (t1, t1, t1),
+        (np.ndarray, Int): lambda v1, t2: (t2, t2, t2),
     }
     uint_rules = {
         (UInt, Int): lambda t1, t2: (
@@ -114,6 +118,9 @@ def dummy_binary_arith_rule():
         (int, UInt): lambda v1, t2: (t2, t2, t2),
         (UInt, float): lambda t1, v2: (Float(64), Float(64), Float(64)),
         (float, UInt): lambda v1, t2: (Float(64), Float(64), Float(64)),
+        # numpy array
+        (UInt, np.ndarray): lambda t1, v2: (t1, t1, t1),
+        (np.ndarray, UInt): lambda v1, t2: (t2, t2, t2),
     }
     index_rules = {
         (Index, Int): lambda t1, t2: (
@@ -139,6 +146,9 @@ def dummy_binary_arith_rule():
         # python native value
         (Index, int): lambda t1, v2: (UInt(32), UInt(32), UInt(32)),
         (int, Index): lambda v1, t2: (UInt(32), UInt(32), UInt(32)),
+        # numpy array
+        (Index, np.ndarray): lambda t1, v2: (UInt(32), UInt(32), UInt(32)),
+        (np.ndarray, Index): lambda v1, t2: (UInt(32), UInt(32), UInt(32)),
     }
     float_rules = {
         (Float, Int): lambda t1, t2: (
@@ -160,6 +170,9 @@ def dummy_binary_arith_rule():
         (int, Float): lambda v1, t2: (t2, t2, t2),
         (Float, float): lambda t1, v2: (t1, t1, t1),
         (float, Float): lambda v1, t2: (t2, t2, t2),
+        # numpy array
+        (Float, np.ndarray): lambda t1, v2: (t1, t1, t1),
+        (np.ndarray, Float): lambda v1, t2: (t2, t2, t2),
     }
     return TypingRule(
         [int_rules, uint_rules, index_rules, float_rules],

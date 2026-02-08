@@ -18,6 +18,10 @@ def process(fn: Union[Callable, str], instantiate: list = None):
     ast_processor = ASTProcessor(symbol_table, global_symbols=get_global_vars(fn))
     # process the top function
     node, top_name = ast_processor.process(fn, instantiate=instantiate)
+    for name, constant in symbol_table.constants.items():
+        print(name, "=", constant.value)
+    for op in symbol_table.global_ops:
+        print(ast.unparse(op))
     for node in symbol_table.functions.values():
         print(ast.unparse(node), "\n")
     print()

@@ -2,8 +2,14 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import ast
+import numpy
 from .handler import BuiltinHandler, register_builtin_handler
-from allo._mlir.dialects import arith as arith_d, allo as allo_d, linalg as linalg_d
+from allo._mlir.dialects import (
+    arith as arith_d,
+    allo as allo_d,
+    memref as memref_d,
+    linalg as linalg_d,
+)
 from allo._mlir.ir import (
     InsertionPoint,
     IntegerType,
@@ -13,6 +19,9 @@ from allo._mlir.ir import (
     ArrayAttr,
     AffineMapAttr,
     Attribute,
+    TypeAttr,
+    StringAttr,
+    DenseElementsAttr,
 )
 from allo.ir.types import (
     Index,
@@ -38,6 +47,28 @@ class ConstantHandler(BuiltinHandler):
 
     def get_affine_expr(self, node: ast.Call, ivs: list):
         return self.builder.get_affine_expr(node.args[0], ivs)
+
+
+@register_builtin_handler("constant_tensor")
+class ConstantTensorHandler(BuiltinHandler):
+    def build(self, node: ast.Call, *args):
+        args_ = node.args
+        assert isinstance(args_[0], ast.Name) and isinstance(args_[1], ast.Name)
+        assert isinstance(args_[2], ast.Subscript)
+        target = args_[0].id
+        value = self.builder.symbol_table.global_symbols[args_[1].id]
+        dtype, _ = self.builder.build_type(args_[2])
+        value_attr = DenseElementsAttr.get(numpy.array(value), type=dtype.element_type)
+        op = memref_d.GlobalOp(
+            sym_name=StringAttr.get(target),
+            type_=TypeAttr.get(dtype),
+            sym_visibility=StringAttr.get("private"),
+            initial_value=value_attr,
+            constant=True,
+            alignment=None,
+            ip=self.builder.get_ip(),
+        )
+        self.builder.global_symbols[target] = op
 
 
 @register_builtin_handler("cast")

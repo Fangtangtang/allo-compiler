@@ -5,6 +5,7 @@ import copy
 from typing import Union
 from collections import deque, ChainMap
 from collections.abc import Callable
+import numpy as np
 import ast
 from .utils import parse_ast, SymbolTable, BlockScopeGuard, Scope
 from .typing_rule import cpp_style_registry
@@ -17,6 +18,7 @@ from allo.ir.types import (
     Index,
     bool as allo_bool,
 )
+from allo.utils import np_supported_types
 from allo.memory import Layout
 from .builtin import BUILTIN_HANDLERS
 
@@ -46,7 +48,7 @@ class ASTProcessor(ast.NodeTransformer):
         """
         method = "visit_" + node.__class__.__name__
         visitor = getattr(self, method, None)
-        assert visitor is not None
+        assert visitor is not None, f"{method} not found"
         return visitor(node)
 
     def block_scope_guard(self):
@@ -56,15 +58,20 @@ class ASTProcessor(ast.NodeTransformer):
         assert (
             name not in self.symbol_table.functions
             and name not in self.symbol_table.variables
+            and name not in self.symbol_table.constants
         )
         self.scopes[-1].vars[name] = val
 
-    def put_const(self, name, const):
+    def put_const(self, name, const, is_global: bool = False):
         assert (
             name not in self.symbol_table.functions
             and name not in self.symbol_table.variables
+            and name not in self.symbol_table.constants
         )
-        self.scopes[-1].consts[name] = const
+        if is_global:
+            self.symbol_table.constants[name] = const
+        else:
+            self.scopes[-1].consts[name] = const
 
     def get_symbol(self, name, allow_missing=False):
         """
@@ -80,6 +87,10 @@ class ASTProcessor(ast.NodeTransformer):
                 return scope.vars[name]
             if name in scope.consts:
                 return scope.consts[name]
+        if name in self.symbol_table.variables:
+            return self.symbol_table.variables[name]
+        if name in self.symbol_table.constants:
+            return self.symbol_table.constants[name]
         if allow_missing:
             return None
         raise ValueError(f"Variable {name} not defined in current scope.")
@@ -88,7 +99,9 @@ class ASTProcessor(ast.NodeTransformer):
         consts = {}
         for scope in self.scopes:
             for k, v in scope.consts.items():
-                consts[k] = v.value
+                consts[k] = v.value  # v is ast.Constant
+        for k, v in self.symbol_table.constants.items():
+            consts[k] = v.value
         return consts
 
     def process(self, fn: Union[Callable, str], instantiate: list = None):
@@ -289,6 +302,7 @@ class ASTProcessor(ast.NodeTransformer):
         if isinstance(node, ast.Constant):
             # constant should be explicitly 'typed', replace the node with builtin constant construction function call
             shape = node.shape
+            assert len(shape) == 0, "buildin `constant` op is only for scalalr constant"
             if isinstance(target_dtype, Float):
                 node.value = float(node.value)
             else:
@@ -308,6 +322,28 @@ class ASTProcessor(ast.NodeTransformer):
                 keywords=[],
             )
             node.dtype, node.shape = target_dtype, shape
+        if isinstance(node, ast.Name) and not hasattr(node, "dtype"):
+            # untyped global constant
+            node.dtype = target_dtype
+            # add a new global op
+            call = ast.Call(
+                func=ast.Attribute(
+                    value=ast.Name(id="__allo__", ctx=ast.Load()),
+                    attr="constant_tensor",
+                    ctx=ast.Load(),
+                ),
+                args=[
+                    node,  # tensor name
+                    node,  # init value symbol
+                    self.get_ast_annotaiton(target_dtype, node.shape, None),
+                ],
+                keywords=[],
+            )
+            assert str(target_dtype) in np_supported_types
+            self.symbol_table.global_symbols[node.id] = node.value.astype(
+                np_supported_types[str(target_dtype)]
+            )  # construct np array vlaue with target dtype
+            self.symbol_table.global_ops.append(call)
         if node.dtype == target_dtype:
             return node
         # infer specific handler using CastHandler (abstract class for all cast handlers)
@@ -407,6 +443,21 @@ class ASTProcessor(ast.NodeTransformer):
         else:
             node.step = ast.Constant(value=1)
         return node
+
+    def visit_List(self, node):  # constant tensor
+        try:
+            np_array = np.array(self.eval_constant(node))
+            name = f"np_arr_{SymbolTable.get_hash(np_array)}"
+            node = self.get_symbol(name, allow_missing=True)
+            if node is not None:
+                return node
+            node = ast.Name(id=name, ctx=ast.Load())  # refer to the global const tensor
+            node.shape = np_array.shape
+            node.value = np_array
+            self.put_const(name, node, is_global=True)
+            return node
+        except:
+            raise RuntimeError("List constant evaluation failed")
 
     def visit_UnaryOp(self, node: ast.UnaryOp):
         # e.g., +x, -x, not x

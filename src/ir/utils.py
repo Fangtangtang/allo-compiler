@@ -2,8 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import ast
+import hashlib
 import inspect
 import textwrap
+import numpy as np
 from collections.abc import Callable
 from types import FunctionType as PyFunctionType
 from allo.ir.types import AlloType
@@ -36,13 +38,17 @@ def parse_ast(src, verbose=False) -> ast.Module:
 
 class SymbolTable:
     def __init__(self):
-        self.functions = (
-            {}
-        )  # function name -> function instance (instantiated from templates) node
-        self.variables = (
-            {}
-        )  # variable name -> variable node TODO: possibly useful if we have forward referenced global variable
+        # function name -> function instance (instantiated from templates) node
+        self.functions = {}
+        # constant name -> constant value
+        self.constants = {}
+        # variable name -> variable node TODO: possibly useful if we have forward referenced global variable
+        self.variables = {}
+
         self.types = {}  # str(dtype) -> AlloType
+        self.global_symbols = {}  # str -> python object
+
+        self.global_ops = []
         # ----- tools -----
         self.symbol_mangler = {}  # template name -> instance args -> instance name
 
@@ -67,6 +73,13 @@ class SymbolTable:
                 "_" + name + "_" + "_".join(map(str, args)) + "_" + str(len(func_dict))
             )
         return func_dict[key]
+
+    @staticmethod
+    def get_hash(arr):
+        assert isinstance(arr, np.ndarray), "only support np.ndarray"
+        return hashlib.sha256(
+            arr.tobytes() + str((arr.shape, arr.dtype)).encode()
+        ).hexdigest()[:16]
 
 
 def get_global_vars(func):

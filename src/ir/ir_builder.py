@@ -6,7 +6,6 @@ from allo._mlir.dialects import (
     allo as allo_d,
     func as func_d,
     memref as memref_d,
-    tensor as tensor_d,
     affine as affine_d,
     scf as scf_d,
     arith as arith_d,
@@ -64,6 +63,8 @@ class IRBuilder(ast.NodeVisitor):
         self.ip_stack = []  # module insert pointes
         self.handler_cache = {}
 
+        self.global_symbols = {}
+
     def get_builtin_handler(self, name):
         if name not in self.handler_cache:
             if name not in BUILTIN_HANDLERS:
@@ -105,6 +106,16 @@ class IRBuilder(ast.NodeVisitor):
                 return scope.vars[name]
             if name in scope.consts:
                 return scope.consts[name]
+        # global constant
+        if name in self.symbol_table.constants:
+            global_op = self.global_symbols[name]  # memref_d。GlobalOp
+            const_tensor = memref_d.GetGlobalOp(
+                global_op.type_.value,
+                FlatSymbolRefAttr.get(name),
+                ip=self.get_ip(),
+            )
+            self.put_var(name, const_tensor)
+            return const_tensor
         if allow_missing:
             return None
         raise RuntimeError("unreachable")
@@ -126,6 +137,9 @@ class IRBuilder(ast.NodeVisitor):
         with self.ctx, Location.unknown():
             self.module = Module.create()
             self.set_ip(self.module.body)
+            # set up global operations
+            for op in self.symbol_table.global_ops:
+                self.visit(op)
             for func_node in self.symbol_table.functions.values():
                 self.visit(func_node)
             self.pop_ip()

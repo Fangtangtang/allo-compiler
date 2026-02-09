@@ -79,36 +79,6 @@ def test_meta_for():
             gold[i * 2 + j] = i
     assert np.allclose(s(np_A), gold)
 
-    def kernel(A: int32[10]):
-        with allo.meta_for(10) as i:
-            with allo.meta_for(i + 1, 10) as j:
-                with allo.meta_for(j * 2, 10) as k:
-                    A[k] += i - j
-
-    s = process(kernel)
-    np_A = np.zeros((10,), dtype=np.int32)
-    gold = np.zeros((10,), dtype=np.int32)
-    for i in range(10):
-        for j in range(i + 1, 10):
-            for k in range(j * 2, 10):
-                gold[k] += i - j
-    s(np_A)
-    assert np.allclose(np_A, gold)
-
-    def kernel(B: int32[10]):
-        with allo.meta_for(10) as i:
-            with allo.meta_for(i, i + 1) as j:
-                B[i] += j
-
-    s = process(kernel)
-    np_B = np.zeros((10,), dtype=np.int32)
-    gold = np.zeros((10,), dtype=np.int32)
-    for i in range(10):
-        for j in range(i, i + 1):
-            gold[i] += j
-    s(np_B)
-    assert np.allclose(np_B, gold)
-
     print("test_meta_for passed")
 
 

@@ -911,10 +911,15 @@ class ASTProcessor(ast.NodeTransformer):
             with self.block_scope_guard():
                 target = node.items[0].optional_vars
                 self.set_loop_iter(target)
-                ivs_ = [
-                    self.visit_cast(self.visit(iv), Index(), skip_const=True)
-                    for iv in node.items[0].context_expr.args
-                ]
+                try:
+                    ivs_ = [
+                        self.visit_constant(iv)
+                        for iv in node.items[0].context_expr.args
+                    ]
+                except:
+                    raise RuntimeError(
+                        "meta_for loop args must be compile time constants"
+                    )
                 if len(ivs_) == 1:
                     ivs_.insert(0, ast.Constant(value=0))
                 if len(ivs_) == 2:
@@ -932,6 +937,9 @@ class ASTProcessor(ast.NodeTransformer):
                 )
                 ast.copy_location(for_node, node)
                 return for_node
+        # compile time decidable branches
+        if attr == "meta_if":
+            pass
         raise NotImplementedError
 
     def visit_call_kernel(self, orig_node: ast.Call, func, instantiate: list = None):

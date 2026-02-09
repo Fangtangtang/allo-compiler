@@ -4,7 +4,7 @@
 import numpy as np
 from src.main import process
 import allo
-from allo.ir.types import int32, index, uint1, float32
+from allo.ir.types import int32
 from allo.template import meta_for as allo_for
 
 
@@ -173,6 +173,29 @@ def test_meta_if():
         with allo.meta_if(10 < 5):
             A[1] = 5  # miss
         with allo.meta_elif(False):
+            A[1] = 10  # miss
+        with allo.meta_else():
+            A[1] = 15  # hit
+        return A
+
+    s = process(kernel)
+    np_A = np.zeros((10,), dtype=np.int32)
+    gold = np.zeros((10,), dtype=np.int32)
+    gold[0] = 1
+    gold[1] = 15
+    assert np.allclose(s(np_A), gold)
+
+    def kernel(A: int32[10]) -> int32[10]:
+        with allo.meta_if(get_True()):
+            A[0] = 1  # hit
+        with allo.meta_elif(get_True()):
+            A[0] = 2  # miss
+        with allo.meta_else():
+            A[0] = 3  # miss
+
+        with allo.meta_if(get_False()):
+            A[1] = 5  # miss
+        with allo.meta_elif(get_False()):
             A[1] = 10  # miss
         with allo.meta_else():
             A[1] = 15  # hit

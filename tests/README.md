@@ -15,6 +15,7 @@ Contains verified tests for core language features that are fully supported.
 
 - **Control Flow**:
   - `test_branch.py`: Conditional statements (if/else).
+  - `test_builtin_loop.py`: Allo's built-in loop types (`allo.grid`, `allo.reduction`).
   - `test_for.py`: For loops.
   - `test_while.py`: While loops.
 

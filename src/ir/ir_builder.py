@@ -445,7 +445,7 @@ class IRBuilder(ast.NodeVisitor):
         with self.block_scope_guard():
             self.put_var(
                 name=node.target.id,
-                val=MockArg(for_op.induction_variable, use_affine_loop),
+                val=MockArg(for_op.induction_variable, is_affine=use_affine_loop),
             )
             self.set_ip(for_op.body.operations[0])
             for stmt in node.body:
@@ -583,7 +583,7 @@ class IRBuilder(ast.NodeVisitor):
         with self.block_scope_guard():
             # function arguments
             for i, (ast_arg, arg) in enumerate(zip(node.args.args, func_op.arguments)):
-                mock_arg = MockArg(arg, idx=i)
+                mock_arg = MockArg(arg, is_affine=False, idx=i)
                 self.put_var(name=ast_arg.arg, val=mock_arg)
             self.set_ip(func_op.entry_block)
             for stmt in node.body:

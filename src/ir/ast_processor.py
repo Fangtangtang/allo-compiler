@@ -770,40 +770,87 @@ class ASTProcessor(ast.NodeTransformer):
     def visit_For(self, node: ast.For):
         # e.g., for i in range(10):
         #       for i in range(0, 10, 2):
+        def set_iter(target: ast.Name):
+            iter_ = self.get_symbol(target.id, allow_missing=True)
+            assert (
+                iter_ is None
+            ), "Please choose a different name for the loop iterator."
+            target.shape, target.dtype = tuple(), Index()
+            self.put_var(target.id, target)
+
+        def visit_for_body(stmts):
+            new_body = []
+            for stmt in stmts:
+                res = self.visit(stmt)
+                if isinstance(res, list):
+                    new_body.extend(res)
+                elif res is not None:
+                    new_body.append(res)
+            return new_body
+
         if node.orelse:
             raise RuntimeError("'else' clause for 'for' not supported in Allo kernels")
         if isinstance(node.iter, ast.Call):
-            with self.block_scope_guard():
-                iter_ = self.get_symbol(node.target.id, allow_missing=True)
-                assert (
-                    iter_ is None
-                ), "Please choose a different name for the loop iterator."
-                node.target.shape = tuple()
-                node.target.dtype = Index()
-                self.put_var(node.target.id, node.target)
-                ivs = node.iter.args
-                ivs_ = []
-                for iv in ivs:
-                    iv_ = self.visit(iv)
-                    if not isinstance(
-                        iv_, ast.Constant
-                    ):  # let constant be a special case (FIXME: merge)
-                        iv_ = self.visit_cast(iv_, Index())
-                    ivs_.append(iv_)
-                if len(ivs_) == 1:
-                    ivs_.insert(0, ast.Constant(value=0))
-                if len(ivs_) == 2:
-                    ivs_.append(ast.Constant(value=1))
-                node.iter.args = ivs_
-                new_body = []
-                for stmt in node.body:
-                    res = self.visit(stmt)
-                    if isinstance(res, list):
-                        new_body.extend(res)
-                    elif res is not None:
-                        new_body.append(res)
-                node.body = new_body
-            return node
+            # naive for loop
+            if isinstance(node.iter.func, ast.Name) and node.iter.func.id == "range":
+                with self.block_scope_guard():
+                    set_iter(node.target)
+                    ivs = node.iter.args
+                    ivs_ = []
+                    for iv in ivs:
+                        iv_ = self.visit(iv)
+                        if not isinstance(
+                            iv_, ast.Constant
+                        ):  # let constant be a special case (FIXME: merge)
+                            iv_ = self.visit_cast(iv_, Index())
+                        ivs_.append(iv_)
+                    if len(ivs_) == 1:
+                        ivs_.insert(0, ast.Constant(value=0))
+                    if len(ivs_) == 2:
+                        ivs_.append(ast.Constant(value=1))
+                    node.iter.args = ivs_
+                    node.body = visit_for_body(node.body)
+                return node
+            if (
+                isinstance(node.iter.func, ast.Attribute)
+                and getattr(node.iter.func.value, "id", None) == "allo"
+            ):
+                attr = node.iter.func.attr
+                assert attr == "grid" or attr == "reduction", "Unsupported loop type"
+                targets = (
+                    node.target.elts
+                    if isinstance(node.target, ast.Tuple)
+                    else [node.target]
+                )
+                ranges = node.iter.args
+                assert len(targets) == len(ranges)
+                loops: list[ast.For] = []
+                with self.block_scope_guard():
+                    for target, range_ in zip(targets, ranges):
+                        set_iter(target)
+                        iv_ = self.visit(range_)
+                        if not isinstance(
+                            iv_, ast.Constant
+                        ):  # let constant be a special case (FIXME: merge)
+                            iv_ = self.visit_cast(iv_, Index())
+                        ivs_ = [ast.Constant(value=0), iv_, ast.Constant(value=1)]
+                        for_node = ast.For(
+                            target=target,
+                            iter=ast.Call(
+                                func=ast.Name("range", ctx=ast.Load()),
+                                args=ivs_,
+                                keywords=[],
+                            ),
+                            body=[],
+                            orelse=[],
+                            type_comment=attr,
+                        )
+                        ast.copy_location(for_node, node)
+                        if len(loops) > 0:
+                            loops[-1].body.append(for_node)
+                        loops.append(for_node)
+                    loops[-1].body = visit_for_body(node.body)
+                return loops[0]
         raise RuntimeError("Unsupported for loop")
 
     def visit_While(self, node: ast.While):

@@ -5,6 +5,7 @@ import numpy as np
 from src.main import process
 import allo
 from allo.ir.types import int32, index, uint1, float32
+from allo.template import meta_for as allo_for
 
 
 def test_meta_for():
@@ -46,9 +47,9 @@ def test_meta_for():
     assert np.allclose(s(np_A), gold)
 
     def kernel(A: int32[20]):
-        with allo.meta_for(10) as i:
+        with allo.template.meta_for(10) as i:
             A[i] = i
-        with allo.meta_for(10, 20) as i:
+        with allo_for(10, 20) as i:
             A[i] = i
         with allo.meta_for(0, 20, 2) as i:
             A[i] = i * 2
@@ -79,13 +80,45 @@ def test_meta_for():
             gold[i * 2 + j] = i
     assert np.allclose(s(np_A), gold)
 
+    def get_constant(value: int):
+        return value
+
+    def kernel(A: int32[20]) -> int32[20]:
+        with allo.meta_for(get_constant(10)) as i:
+            with allo.meta_for(get_constant(2)) as j:
+                A[i * 2 + j] = i
+        return A
+
+    s = process(kernel)
+    np_A = np.zeros((20,), dtype=np.int32)
+    gold = np.zeros((20,), dtype=np.int32)
+    for i in range(10):
+        for j in range(2):
+            gold[i * 2 + j] = i
+    assert np.allclose(s(np_A), gold)
+
     print("test_meta_for passed")
 
 
 def test_meta_if():
-    pass
+    def get_True():
+        return True
+
+    def get_False():
+        return False
+
+    def kernel(A: int32[10]):
+        with allo.meta_if(10 > 5):
+            A[0] = 1
+        return A
+
+    s = process(kernel)
+    np_A = np.zeros((10,), dtype=np.int32)
+    gold = np.zeros((10,), dtype=np.int32)
+    gold[0] = 1
+    assert np.allclose(s(np_A), gold)
 
 
 if __name__ == "__main__":
     test_meta_for()
-    test_meta_if()
+    # test_meta_if()

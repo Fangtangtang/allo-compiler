@@ -5,12 +5,25 @@ import numpy as np
 from src.main import process
 import allo
 from allo.ir.types import int32, index, uint1, float32
+from allo.dsl import grid
 
 
 def test_grid_loop():
     def kernel(A: int32[32], B: int32[32]) -> int32[32]:
         C: int32[32] = 0
         for i, _ in allo.grid(32, 2):
+            C[i] = A[i] + B[i]
+        return C
+
+    s = process(kernel)
+    np_A = np.random.randint(0, 255, (32,), dtype=np.int32)
+    np_B = np.random.randint(0, 255, (32,), dtype=np.int32)
+    np_C = s(np_A, np_B)
+    assert np.allclose(np_C, np_A + np_B)
+
+    def kernel(A: int32[32], B: int32[32]) -> int32[32]:
+        C: int32[32] = 0
+        for i, _ in grid(32, 2):
             C[i] = A[i] + B[i]
         return C
 

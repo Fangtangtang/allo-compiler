@@ -158,6 +158,27 @@ class ASTProcessor(ast.NodeTransformer):
                 for kw in node.keywords
             }
             return ty_cls(*args, **kwargs)
+        if isinstance(node, ast.Attribute):
+            v = node.value
+            chain = [node.attr]
+            while isinstance(v, ast.Attribute):
+                chain.append(v.attr)
+                v = v.value
+            if not isinstance(v, ast.Name):
+                # Example cases that fall under this branch:
+                #   - x[i].attr: ast.Subscript
+                #   - (a + b).attr: ast.BinOp
+                return None
+            chain.append(v.id)
+            if chain[-1] not in self.global_symbols:
+                return None
+            mod = self.global_symbols[chain[-1]]
+            for attr in reversed(chain[:-1]):
+                try:
+                    mod = getattr(mod, attr)
+                except AttributeError:
+                    return None
+            return mod
 
     def visit_type_annotation(self, annotation: ast.AST):
         """
@@ -806,44 +827,41 @@ class ASTProcessor(ast.NodeTransformer):
                     node.iter.args = ivs_
                     node.body = self.visit_body(node.body)
                 return node
-            if (
-                isinstance(node.iter.func, ast.Attribute)
-                and getattr(node.iter.func.value, "id", None) == "allo"
-            ):
-                attr = node.iter.func.attr
-                assert attr == "grid" or attr == "reduction", "Unsupported loop type"
-                targets = (
-                    node.target.elts
-                    if isinstance(node.target, ast.Tuple)
-                    else [node.target]
-                )
-                ranges = node.iter.args
-                assert len(targets) == len(ranges)
-                loops: list[ast.For] = []
-                with self.block_scope_guard():
-                    for target, range_ in zip(targets, ranges):
-                        self.set_loop_iter(target)
-                        iv_ = self.visit_cast(
-                            self.visit(range_), Index(), skip_const=True
-                        )
-                        ivs_ = [ast.Constant(value=0), iv_, ast.Constant(value=1)]
-                        for_node = ast.For(
-                            target=target,
-                            iter=ast.Call(
-                                func=ast.Name("range", ctx=ast.Load()),
-                                args=ivs_,
-                                keywords=[],
-                            ),
-                            body=[],
-                            orelse=[],
-                            type_comment=attr,
-                        )
-                        ast.copy_location(for_node, node)
-                        if len(loops) > 0:
-                            loops[-1].body.append(for_node)
-                        loops.append(for_node)
-                    loops[-1].body = self.visit_body(node.body)
-                return loops[0]
+            # builtin for loops
+            module = self.resolve_node(node.iter.func)
+            assert module.__module__.startswith("allo.dsl"), "Invalid for statement"
+            attr = module.__name__
+            assert attr == "grid" or attr == "reduction", "Unsupported loop type"
+            targets = (
+                node.target.elts
+                if isinstance(node.target, ast.Tuple)
+                else [node.target]
+            )
+            ranges = node.iter.args
+            assert len(targets) == len(ranges)
+            loops: list[ast.For] = []
+            with self.block_scope_guard():
+                for target, range_ in zip(targets, ranges):
+                    self.set_loop_iter(target)
+                    iv_ = self.visit_cast(self.visit(range_), Index(), skip_const=True)
+                    ivs_ = [ast.Constant(value=0), iv_, ast.Constant(value=1)]
+                    for_node = ast.For(
+                        target=target,
+                        iter=ast.Call(
+                            func=ast.Name("range", ctx=ast.Load()),
+                            args=ivs_,
+                            keywords=[],
+                        ),
+                        body=[],
+                        orelse=[],
+                        type_comment=attr,
+                    )
+                    ast.copy_location(for_node, node)
+                    if len(loops) > 0:
+                        loops[-1].body.append(for_node)
+                    loops.append(for_node)
+                loops[-1].body = self.visit_body(node.body)
+            return loops[0]
         raise RuntimeError("Unsupported for loop")
 
     def visit_While(self, node: ast.While):
@@ -901,11 +919,9 @@ class ASTProcessor(ast.NodeTransformer):
         # e.g., with allo.meta_if(cond):
         assert len(node.items) == 1 and isinstance(node.items[0].context_expr, ast.Call)
         func = node.items[0].context_expr.func
-        assert (
-            isinstance(func, ast.Attribute)
-            and getattr(func.value, "id", None) == "allo"
-        ), "Invalide with statement"
-        attr = func.attr
+        module = self.resolve_node(func)
+        assert module.__module__.startswith("allo.template"), "Invalide with statement"
+        attr = module.__name__
         # compile time unrolled loop
         if attr == "meta_for":
             with self.block_scope_guard():
@@ -939,6 +955,7 @@ class ASTProcessor(ast.NodeTransformer):
                 return for_node
         # compile time decidable branches
         if attr == "meta_if":
+            print(ast.dump(node, indent=2))
             pass
         raise NotImplementedError
 

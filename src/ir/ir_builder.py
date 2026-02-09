@@ -417,6 +417,7 @@ class IRBuilder(ast.NodeVisitor):
 
     def visit_For(self, node: ast.For):
         # TODO: should use higher-level affine loop if possible
+        # TODO: handle `type_comment`
         args = node.iter.args
         lb, lb_bound_ivs = self.get_affine_attr(args[0])
         ub, ub_bound_ivs = self.get_affine_attr(args[1])

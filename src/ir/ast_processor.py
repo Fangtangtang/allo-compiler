@@ -333,8 +333,12 @@ class ASTProcessor(ast.NodeTransformer):
         call_node.dtype, call_node.shape = dtype, target_shape
         return call_node
 
-    def visit_cast(self, node: ast.AST, target_dtype: AlloType) -> ast.AST:
+    def visit_cast(
+        self, node: ast.AST, target_dtype: AlloType, skip_const: bool = False
+    ) -> ast.AST:
         if isinstance(node, ast.Constant):
+            if skip_const:  # special case for some const index (e.g., loop args)
+                return node
             # constant should be explicitly 'typed', replace the node with builtin constant construction function call
             shape = node.shape
             assert len(shape) == 0, "buildin `constant` op is only for scalalr constant"
@@ -458,10 +462,8 @@ class ASTProcessor(ast.NodeTransformer):
                     size = (elt_.upper.value - elt_.lower.value) // elt_.step.value
                     if size > 0:
                         shape.append(size)
-                elif not isinstance(
-                    elt_, ast.Constant
-                ):  # let constant be a special case (FIXME: merge)
-                    elt_ = self.visit_cast(elt_, Index())
+                else:
+                    elt_ = self.visit_cast(elt_, Index(), skip_const=True)
                 new_elts.append(elt_)
             shape.extend(value.shape[len(elts) :])
             if not hasattr(value, "dtype"):
@@ -767,49 +769,42 @@ class ASTProcessor(ast.NodeTransformer):
             return None
         raise RuntimeError(f"Unsupported expression: {node.value}")
 
+    def set_loop_iter(self, target: ast.Name):
+        iter_ = self.get_symbol(target.id, allow_missing=True)
+        assert iter_ is None, "Please choose a different name for the loop iterator."
+        target.shape, target.dtype = tuple(), Index()
+        self.put_var(target.id, target)
+
+    def visit_body(self, stmts):
+        new_body = []
+        for stmt in stmts:
+            res = self.visit(stmt)
+            if isinstance(res, list):
+                new_body.extend(res)
+            elif res is not None:
+                new_body.append(res)
+        return new_body
+
     def visit_For(self, node: ast.For):
         # e.g., for i in range(10):
         #       for i in range(0, 10, 2):
-        def set_iter(target: ast.Name):
-            iter_ = self.get_symbol(target.id, allow_missing=True)
-            assert (
-                iter_ is None
-            ), "Please choose a different name for the loop iterator."
-            target.shape, target.dtype = tuple(), Index()
-            self.put_var(target.id, target)
-
-        def visit_for_body(stmts):
-            new_body = []
-            for stmt in stmts:
-                res = self.visit(stmt)
-                if isinstance(res, list):
-                    new_body.extend(res)
-                elif res is not None:
-                    new_body.append(res)
-            return new_body
-
         if node.orelse:
             raise RuntimeError("'else' clause for 'for' not supported in Allo kernels")
         if isinstance(node.iter, ast.Call):
             # naive for loop
             if isinstance(node.iter.func, ast.Name) and node.iter.func.id == "range":
                 with self.block_scope_guard():
-                    set_iter(node.target)
-                    ivs = node.iter.args
-                    ivs_ = []
-                    for iv in ivs:
-                        iv_ = self.visit(iv)
-                        if not isinstance(
-                            iv_, ast.Constant
-                        ):  # let constant be a special case (FIXME: merge)
-                            iv_ = self.visit_cast(iv_, Index())
-                        ivs_.append(iv_)
+                    self.set_loop_iter(node.target)
+                    ivs_ = [
+                        self.visit_cast(self.visit(iv), Index(), skip_const=True)
+                        for iv in node.iter.args
+                    ]
                     if len(ivs_) == 1:
                         ivs_.insert(0, ast.Constant(value=0))
                     if len(ivs_) == 2:
                         ivs_.append(ast.Constant(value=1))
                     node.iter.args = ivs_
-                    node.body = visit_for_body(node.body)
+                    node.body = self.visit_body(node.body)
                 return node
             if (
                 isinstance(node.iter.func, ast.Attribute)
@@ -827,12 +822,10 @@ class ASTProcessor(ast.NodeTransformer):
                 loops: list[ast.For] = []
                 with self.block_scope_guard():
                     for target, range_ in zip(targets, ranges):
-                        set_iter(target)
-                        iv_ = self.visit(range_)
-                        if not isinstance(
-                            iv_, ast.Constant
-                        ):  # let constant be a special case (FIXME: merge)
-                            iv_ = self.visit_cast(iv_, Index())
+                        self.set_loop_iter(target)
+                        iv_ = self.visit_cast(
+                            self.visit(range_), Index(), skip_const=True
+                        )
                         ivs_ = [ast.Constant(value=0), iv_, ast.Constant(value=1)]
                         for_node = ast.For(
                             target=target,
@@ -849,7 +842,7 @@ class ASTProcessor(ast.NodeTransformer):
                         if len(loops) > 0:
                             loops[-1].body.append(for_node)
                         loops.append(for_node)
-                    loops[-1].body = visit_for_body(node.body)
+                    loops[-1].body = self.visit_body(node.body)
                 return loops[0]
         raise RuntimeError("Unsupported for loop")
 
@@ -862,14 +855,7 @@ class ASTProcessor(ast.NodeTransformer):
         node.test = self.visit_cast(self.visit(node.test), allo_bool)
         assert len(node.test.shape) == 0, "while condition should be a scalar."
         with self.block_scope_guard():
-            new_body = []
-            for stmt in node.body:
-                res = self.visit(stmt)
-                if isinstance(res, list):
-                    new_body.extend(res)
-                elif res is not None:
-                    new_body.append(res)
-            node.body = new_body
+            node.body = self.visit_body(node.body)
         return node
 
     def visit_If(self, node: ast.If):
@@ -877,24 +863,10 @@ class ASTProcessor(ast.NodeTransformer):
         node.test = self.visit_cast(self.visit(node.test), allo_bool)
         assert len(node.test.shape) == 0, "if condition should be a scalar."
         with self.block_scope_guard():
-            new_body = []
-            for stmt in node.body:
-                res = self.visit(stmt)
-                if isinstance(res, list):
-                    new_body.extend(res)
-                elif res is not None:
-                    new_body.append(res)
-            node.body = new_body
+            node.body = self.visit_body(node.body)
         if len(node.orelse) > 0:
             with self.block_scope_guard():
-                new_body = []
-                for stmt in node.orelse:
-                    res = self.visit(stmt)
-                    if isinstance(res, list):
-                        new_body.extend(res)
-                    elif res is not None:
-                        new_body.append(res)
-                node.orelse = new_body
+                node.orelse = self.visit_body(node.orelse)
         return node
 
     def visit_IfExp(self, node: ast.IfExp):
@@ -927,6 +899,39 @@ class ASTProcessor(ast.NodeTransformer):
 
     def visit_With(self, node: ast.With):
         # e.g., with allo.meta_if(cond):
+        assert len(node.items) == 1 and isinstance(node.items[0].context_expr, ast.Call)
+        func = node.items[0].context_expr.func
+        assert (
+            isinstance(func, ast.Attribute)
+            and getattr(func.value, "id", None) == "allo"
+        ), "Invalide with statement"
+        attr = func.attr
+        # compile time unrolled loop
+        if attr == "meta_for":
+            with self.block_scope_guard():
+                target = node.items[0].optional_vars
+                self.set_loop_iter(target)
+                ivs_ = [
+                    self.visit_cast(self.visit(iv), Index(), skip_const=True)
+                    for iv in node.items[0].context_expr.args
+                ]
+                if len(ivs_) == 1:
+                    ivs_.insert(0, ast.Constant(value=0))
+                if len(ivs_) == 2:
+                    ivs_.append(ast.Constant(value=1))
+                for_node = ast.For(
+                    target=target,
+                    iter=ast.Call(
+                        func=ast.Name("range", ctx=ast.Load()),
+                        args=ivs_,
+                        keywords=[],
+                    ),
+                    body=self.visit_body(node.body),
+                    orelse=[],
+                    type_comment="unroll",
+                )
+                ast.copy_location(for_node, node)
+                return for_node
         raise NotImplementedError
 
     def visit_call_kernel(self, orig_node: ast.Call, func, instantiate: list = None):
@@ -1068,13 +1073,7 @@ class ASTProcessor(ast.NodeTransformer):
                 self.put_var(name=arg.arg, val=arg)
             # function body
             self.current_func = node.name
-            new_body = []
-            for stmt in node.body:
-                res = self.visit(stmt)
-                if isinstance(res, list):
-                    new_body.extend(res)
-                elif res is not None:
-                    new_body.append(res)
+            new_body = self.visit_body(node.body)
             if node.returns is None and not isinstance(new_body[-1], ast.Return):
                 new_body.append(ast.Return())
             node.body = new_body

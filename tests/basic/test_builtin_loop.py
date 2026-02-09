@@ -97,6 +97,8 @@ def test_grid_loop():
     np.testing.assert_allclose(np_res1, np_B + 1)
     np.testing.assert_allclose(np_res2, np_C + 1)
 
+    print("test_grid_loop passed")
+
 
 def test_reduction_loop():
     def kernel(A: int32[32, 32], B: int32[32, 32]) -> int32[32, 32]:
@@ -113,6 +115,8 @@ def test_reduction_loop():
     np_B = np.random.randint(0, 255, (32, 32), dtype=np.int32)
     np_C = s(np_A, np_B)
     assert np.allclose(np_C, np.matmul(np_A, np_B))
+
+    print("test_reduction_loop passed")
 
 
 if __name__ == "__main__":

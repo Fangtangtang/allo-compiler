@@ -107,9 +107,11 @@ def test_meta_if():
     def get_False():
         return False
 
-    def kernel(A: int32[10]):
+    def kernel(A: int32[10]) -> int32[10]:
         with allo.meta_if(10 > 5):
             A[0] = 1
+        with allo.meta_if(10 < 5):
+            A[0] = 5
         return A
 
     s = process(kernel)
@@ -118,7 +120,72 @@ def test_meta_if():
     gold[0] = 1
     assert np.allclose(s(np_A), gold)
 
+    def kernel(A: int32[10]) -> int32[10]:
+        with allo.meta_if(10 > 5):
+            A[0] = 1
+        with allo.meta_elif(10 > 5):
+            A[0] = 2
+
+        with allo.meta_if(10 < 5):
+            A[1] = 5
+        with allo.meta_elif(True):
+            A[1] = 10
+        return A
+
+    s = process(kernel)
+    np_A = np.zeros((10,), dtype=np.int32)
+    gold = np.zeros((10,), dtype=np.int32)
+    gold[0] = 1
+    gold[1] = 10
+    assert np.allclose(s(np_A), gold)
+
+    def kernel(A: int32[10]) -> int32[10]:
+        with allo.meta_if(10 > 5):
+            A[0] = 1  # hit
+        with allo.meta_elif(10 > 5):
+            A[0] = 2  # miss
+        with allo.meta_else():
+            A[0] = 3  # miss
+
+        with allo.meta_if(10 < 5):
+            A[1] = 5  # miss
+        with allo.meta_elif(True):
+            A[1] = 10  # hit
+        with allo.meta_else():
+            A[1] = 15  # miss
+        return A
+
+    s = process(kernel)
+    np_A = np.zeros((10,), dtype=np.int32)
+    gold = np.zeros((10,), dtype=np.int32)
+    gold[0] = 1
+    gold[1] = 10
+    assert np.allclose(s(np_A), gold)
+
+    def kernel(A: int32[10]) -> int32[10]:
+        with allo.meta_if(10 > 5):
+            A[0] = 1  # hit
+        with allo.meta_elif(10 > 5):
+            A[0] = 2  # miss
+        with allo.meta_else():
+            A[0] = 3  # miss
+
+        with allo.meta_if(10 < 5):
+            A[1] = 5  # miss
+        with allo.meta_elif(False):
+            A[1] = 10  # miss
+        with allo.meta_else():
+            A[1] = 15  # hit
+        return A
+
+    s = process(kernel)
+    np_A = np.zeros((10,), dtype=np.int32)
+    gold = np.zeros((10,), dtype=np.int32)
+    gold[0] = 1
+    gold[1] = 15
+    assert np.allclose(s(np_A), gold)
+
 
 if __name__ == "__main__":
     test_meta_for()
-    # test_meta_if()
+    test_meta_if()

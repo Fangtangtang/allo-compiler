@@ -471,8 +471,9 @@ class IRBuilder(ast.NodeVisitor):
         return while_op
 
     def visit_If(self, node: ast.If):
-        # TODO: should use higher-level affine loop if possible
+        # TODO: should use higher-level affine operation if possible
         if isinstance(node.test, ast.Constant):  # simple DCE
+            # [NOTE]: do not eliminate the branch on AST, so we can keep the original scoping
             if node.test.value:
                 with self.block_scope_guard():
                     for stmt in node.body:

@@ -34,6 +34,8 @@ class ASTProcessor(ast.NodeTransformer):
         self.global_symbols: dict = global_symbols
         self.typing_rule = typing_rule
         self.scopes: list[Scope] = []
+        # keep track of metaprogramming conditions, allow nesting
+        self.meta_cond: list[bool] = []
 
         self.worklist: deque[ast.FunctionDef] = deque([])
         self.current_func: str = None
@@ -915,8 +917,7 @@ class ASTProcessor(ast.NodeTransformer):
     def visit_Pass(self, node: ast.Pass):
         return node
 
-    def visit_With(self, node: ast.With):
-        # e.g., with allo.meta_if(cond):
+    def visit_With(self, node: ast.With):  # for meta programming in `allo.template`
         assert len(node.items) == 1 and isinstance(node.items[0].context_expr, ast.Call)
         func = node.items[0].context_expr.func
         module = self.resolve_node(func)
@@ -955,8 +956,46 @@ class ASTProcessor(ast.NodeTransformer):
                 return for_node
         # compile time decidable branches
         if attr == "meta_if":
-            print(ast.dump(node, indent=2))
-            pass
+            assert len(node.items[0].context_expr.args) == 1, "Invalid meta_if"
+            cond = bool(self.eval_constant(node.items[0].context_expr.args[0]))
+            self.meta_cond.append(cond)
+            if cond:
+                if_node = ast.If(
+                    test=ast.Constant(value=cond),
+                    body=self.visit_body(node.body),
+                    orelse=[],
+                )
+                ast.copy_location(if_node, node)
+                return if_node
+            return None
+        if attr == "meta_elif":
+            assert len(node.items[0].context_expr.args) == 1, "Invalid meta_elif"
+            assert len(self.meta_cond) > 0, "Invalid meta_elif"
+            if self.meta_cond[-1]:
+                return None  # else branch won't hit
+            cond = bool(self.eval_constant(node.items[0].context_expr.args[0]))
+            self.meta_cond[-1] = cond
+            if cond:
+                if_node = ast.If(
+                    test=ast.Constant(value=cond),
+                    body=self.visit_body(node.body),
+                    orelse=[],
+                )
+                ast.copy_location(if_node, node)
+                return if_node
+            return None
+        if attr == "meta_else":
+            assert len(node.items[0].context_expr.args) == 0, "Invalid meta_else"
+            assert len(self.meta_cond) > 0, "Invalid meta_else"
+            if self.meta_cond.pop():
+                return None  # else branch won't hit
+            if_node = ast.If(
+                test=ast.Constant(value=True),
+                body=self.visit_body(node.body),
+                orelse=[],
+            )
+            ast.copy_location(if_node, node)
+            return if_node
         raise NotImplementedError
 
     def visit_call_kernel(self, orig_node: ast.Call, func, instantiate: list = None):
@@ -1104,6 +1143,7 @@ class ASTProcessor(ast.NodeTransformer):
             node.body = new_body
             self.current_func = None
         self.symbols = self.global_symbols
+        self.meta_cond.clear()
         return node
 
     def visit_FunctionDef(self, node: ast.FunctionDef, instantiate: list = None):

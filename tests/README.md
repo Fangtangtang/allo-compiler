@@ -28,6 +28,9 @@ Contains verified tests for core language features that are fully supported.
   - `test_multi_return.py`: Functions returning multiple values.
   - `test_template.py`: Template functions and parametrization.
 
+- **Meta-Programming**:
+  - `test_meta_prog.py`: Meta-programming constructs (`allo.meta_for`, `allo.meta_if`, `allo.meta_elif`, `allo.meta_else`).
+
 ### `tests/` (Root)
 Contains tests for advanced or experimental features currently under development.
 

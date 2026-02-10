@@ -7,8 +7,9 @@ from collections import deque, ChainMap
 from collections.abc import Callable
 import numpy as np
 import ast
-from .utils import parse_ast, SymbolTable, BlockScopeGuard, Scope
+from .utils import get_ast, SymbolTable, BlockScopeGuard, Scope
 from .typing_rule import cpp_style_registry
+from allo.spmw import FunctionType
 from allo.ir.types import (
     AlloType,
     Float,
@@ -29,10 +30,12 @@ class ASTProcessor(ast.NodeTransformer):
             self.name = name
 
         def __enter__(self):
-            # TODO
-            ...
+            self.proc.current_namespace = self.name
+            self.proc.scopes.append(Scope())
 
         def __exit__(self, exc_type, exc_val, exc_tb):
+            self.proc.scopes.pop()
+            self.proc.current_namespace = None
             # TODO
             ...
 
@@ -49,8 +52,10 @@ class ASTProcessor(ast.NodeTransformer):
                 getattr(self.func, "template_bindings", {}), self.proc.global_symbols
             )
             self.proc.current_func = self.func.name
+            self.proc.scopes.append(Scope())
 
         def __exit__(self, exc_type, exc_val, exc_tb):
+            self.proc.scopes.pop()
             self.proc.symbols = self.proc.global_symbols
             self.proc.current_func = None
             self.proc.meta_cond.clear()
@@ -68,13 +73,17 @@ class ASTProcessor(ast.NodeTransformer):
         self.symbol_table: SymbolTable = symbol_table
         self.global_symbols: dict = global_symbols
         self.typing_rule = typing_rule
-        self.scopes: list[Scope] = []
+
+        self.worklist: deque[ast.FunctionDef] = deque([])
+
+        self.current_namespace: str = None
+
+        self.current_func: str = None
+        self.symbols = global_symbols
         # keep track of metaprogramming conditions, allow nesting
         self.meta_cond: list[bool] = []
 
-        self.worklist: deque[ast.FunctionDef] = deque([])
-        self.current_func: str = None
-        self.symbols = global_symbols
+        self.scopes: list[Scope] = []
 
     def visit(self, node):
         """
@@ -148,14 +157,11 @@ class ASTProcessor(ast.NodeTransformer):
             fn: The function to process.
             instantiate: The arguments to instantiate the function. default to None.
         """
-        func: ast.FunctionDef = parse_ast(fn)
-        if instantiate is not None:
-            # if instantiate is not None, we need to use the args to instantiate the unique function
-            node, top_name = self.visit_function_signature(func, instantiate)
-        else:
-            node, top_name = self.visit_function_signature(func)
+        func: ast.FunctionDef = get_ast(fn)
+        # if instantiate is not None, we need to use the args to instantiate the unique function
+        node, top_name = self.visit_function_signature(func, instantiate)
         while self.worklist:
-            self.visit_function_body(
+            n = self.visit_function_body(
                 self.symbol_table.functions[self.worklist.popleft()]
             )
         return func, top_name
@@ -1027,7 +1033,7 @@ class ASTProcessor(ast.NodeTransformer):
         raise NotImplementedError
 
     def visit_call_kernel(self, orig_node: ast.Call, func, instantiate: list = None):
-        func: ast.FunctionDef = parse_ast(func)
+        func: ast.FunctionDef = get_ast(func)
         callee, callee_name = self.visit_function_signature(func, instantiate)
         # arguments TODO: support kwargs and others?
         assert len(orig_node.args) == len(
@@ -1093,7 +1099,8 @@ class ASTProcessor(ast.NodeTransformer):
 
     def visit_function_signature(self, node: ast.FunctionDef, instantiate: list = None):
         # instantiate an instance from template
-        if instantiate is not None:  # TODO: shall we copy node?
+        if instantiate is not None:
+            assert node._type in {FunctionType.KERNEL, FunctionType.UNIT}
             func_name = self.symbol_table.mangle_template_name(node.name, instantiate)
             assert len(getattr(node, "type_params", [])) == len(instantiate)
             node.template_bindings = {}
@@ -1101,12 +1108,18 @@ class ASTProcessor(ast.NodeTransformer):
                 if type_var.bound is not None:
                     raise NotImplementedError
                 node.template_bindings[type_var.name] = call_val
+        elif node._type in {FunctionType.WORK}:
+            assert self.current_namespace is not None, "work must be defined in unit"
+            func_name = self.symbol_table.mangle_with_namespace(
+                node.name, self.current_namespace
+            )
         else:
             func_name = node.name
         if func_name in self.symbol_table.functions:  # function instance visited
             return self.symbol_table.functions[func_name], func_name
         self.symbol_table.functions[func_name] = node  # record function
-        self.worklist.append(func_name)
+        if node._type in {FunctionType.KERNEL, FunctionType.UNIT}:
+            self.worklist.append(func_name)  # declare only
         node.name = func_name
         old_symbols = self.symbols
         self.symbols = ChainMap(
@@ -1155,8 +1168,15 @@ class ASTProcessor(ast.NodeTransformer):
         return node, func_name
 
     def visit_function_body(self, node: ast.FunctionDef):
-        with self.function_scope(node):
-            with self.block_scope_guard():
+        if node._type in {FunctionType.UNIT}:
+            with self.namespace(name=node.name):
+                # arguments
+                for arg in node.args.args:
+                    self.put_var(name=arg.arg, val=arg)
+                # unit region
+                node.body = self.visit_body(node.body)
+        else:
+            with self.function_scope(node):
                 # arguments
                 for arg in node.args.args:
                     self.put_var(name=arg.arg, val=arg)
@@ -1168,9 +1188,34 @@ class ASTProcessor(ast.NodeTransformer):
         return node
 
     def visit_FunctionDef(self, node: ast.FunctionDef, instantiate: list = None):
-        # TODO: when will we use this? df.region?
+        assert len(node.decorator_list) == 1 and isinstance(
+            node.decorator_list[0], ast.Call
+        )
+        module = self.resolve_node(node.decorator_list[0].func)
+        assert module.__module__.startswith("allo.spmw") and module.__name__ == "work"
+        node._type = FunctionType.WORK
+        # keywords
+        args = []
+        for kw in node.decorator_list[0].keywords:
+            assert isinstance(kw.value, ast.List)
+            if kw.arg == "mapping":
+                kw.value.elts = [self.visit_constant(c) for c in kw.value.elts]
+            elif kw.arg == "args":
+                for arg in kw.value.elts:
+                    assert isinstance(arg, ast.Name) and self.get_symbol(arg.id)
+                args = kw.value.elts
+            else:
+                raise RuntimeError("Invalid work declaration")
         node, _ = self.visit_function_signature(node, instantiate=instantiate)
-        return self.visit_function_body(node)
+        node = self.visit_function_body(node)
+        # TODO: replace work declaration as 'function call'
+        call_node = ast.Expr(
+            value=ast.Call(
+                func=ast.Name(id=node.name, ctx=ast.Load()), args=args, keywords=[]
+            )
+        )
+
+        return call_node
 
     # ----- invalid syntax -----
     def visit_Break(self, node: ast.Break):

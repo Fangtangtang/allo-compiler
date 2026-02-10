@@ -12,9 +12,11 @@ from allo.ir.types import AlloType
 from allo.memory import Memory
 
 
-def parse_ast(src) -> ast.FunctionDef:
-    assert hasattr(src, "_ast"), "Invalid function"
-    return copy.deepcopy(src._ast)
+def get_ast(src) -> ast.FunctionDef:
+    assert hasattr(src, "_ast") and hasattr(src, "_type"), "Invalid function"
+    node = copy.deepcopy(src._ast)  # get a new copy to avoid overwriting
+    node._type = src._type
+    return node
 
 
 class SymbolTable:

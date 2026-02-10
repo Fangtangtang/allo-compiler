@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from src.main import process
-from allo import customize
 from allo.ir.types import int32, Int
 from allo import spmw
 

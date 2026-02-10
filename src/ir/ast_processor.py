@@ -23,6 +23,41 @@ from .builtin import BUILTIN_HANDLERS
 
 
 class ASTProcessor(ast.NodeTransformer):
+    class Namespace:
+        def __init__(self, processor: "ASTProcessor", name: str):
+            self.proc = processor
+            self.name = name
+
+        def __enter__(self): 
+            # TODO
+            ...
+
+        def __exit__(self, exc_type, exc_val, exc_tb): 
+            # TODO
+            ...
+
+    def namespace(self, name: str):
+        return ASTProcessor.Namespace(self, name)
+
+    class FunctionScope:
+        def __init__(self, processor: "ASTProcessor", node: ast.FunctionDef):
+            self.proc = processor
+            self.func = node
+
+        def __enter__(self):
+            self.proc.symbols = ChainMap(
+                getattr(self.func, "template_bindings", {}), self.proc.global_symbols
+            )
+            self.proc.current_func = self.func.name
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            self.proc.symbols = self.proc.global_symbols
+            self.proc.current_func = None
+            self.proc.meta_cond.clear()
+
+    def function_scope(self, node: ast.FunctionDef):
+        return ASTProcessor.FunctionScope(self, node)
+
     def __init__(
         self,
         symbol_table: SymbolTable,
@@ -114,6 +149,7 @@ class ASTProcessor(ast.NodeTransformer):
             instantiate: The arguments to instantiate the function. default to None.
         """
         module: ast.Module = parse_ast(fn)
+        # print(ast.dump(module, indent=2))
         if instantiate is not None:
             # if instantiate is not None, we need to use the args to instantiate the unique function
             assert len(module.body) == 1 and isinstance(module.body[0], ast.FunctionDef)
@@ -1067,7 +1103,7 @@ class ASTProcessor(ast.NodeTransformer):
     def visit_function_signature(self, node: ast.FunctionDef, instantiate: list = None):
         # instantiate an instance from template
         if instantiate is not None:  # TODO: shall we copy node?
-            func_name = self.symbol_table.name_mangling(node.name, instantiate)
+            func_name = self.symbol_table.mangle_template_name(node.name, instantiate)
             assert len(getattr(node, "type_params", [])) == len(instantiate)
             node.template_bindings = {}
             for type_var, call_val in zip(node.type_params, instantiate):
@@ -1128,22 +1164,16 @@ class ASTProcessor(ast.NodeTransformer):
         return node, func_name
 
     def visit_function_body(self, node: ast.FunctionDef):
-        self.symbols = ChainMap(
-            getattr(node, "template_bindings", {}), self.global_symbols
-        )
-        with self.block_scope_guard():
-            # arguments
-            for arg in node.args.args:
-                self.put_var(name=arg.arg, val=arg)
-            # function body
-            self.current_func = node.name
-            new_body = self.visit_body(node.body)
-            if node.returns is None and not isinstance(new_body[-1], ast.Return):
-                new_body.append(ast.Return())
-            node.body = new_body
-            self.current_func = None
-        self.symbols = self.global_symbols
-        self.meta_cond.clear()
+        with self.function_scope(node):
+            with self.block_scope_guard():
+                # arguments
+                for arg in node.args.args:
+                    self.put_var(name=arg.arg, val=arg)
+                # function body
+                new_body = self.visit_body(node.body)
+                if node.returns is None and not isinstance(new_body[-1], ast.Return):
+                    new_body.append(ast.Return())
+                node.body = new_body
         return node
 
     def visit_FunctionDef(self, node: ast.FunctionDef, instantiate: list = None):

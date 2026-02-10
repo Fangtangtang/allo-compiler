@@ -40,9 +40,9 @@ class SymbolTable:
     def __init__(self):
         # function name -> function instance (instantiated from templates) node
         self.functions = {}
-        # constant name -> constant value
+        # global: constant name -> constant value
         self.constants = {}
-        # variable name -> variable node TODO: possibly useful if we have forward referenced global variable
+        # global: variable name -> variable node
         self.variables = {}
 
         self.types = {}  # str(dtype) -> AlloType
@@ -50,9 +50,9 @@ class SymbolTable:
 
         self.global_ops = []
         # ----- tools -----
-        self.symbol_mangler = {}  # template name -> instance args -> instance name
+        self.tmpl_instantiations = {}  # template name -> instance args -> instance name
 
-    def name_mangling(self, name: str, args: list) -> str:
+    def mangle_template_name(self, name: str, args: list) -> str:
         """
         Name mangling for instantiated functions.
 
@@ -67,12 +67,15 @@ class SymbolTable:
             suffix = args.pop()
             return "_" + name + "_" + suffix
         key = tuple(args)
-        func_dict = self.symbol_mangler.setdefault(name, {})
+        func_dict = self.tmpl_instantiations.setdefault(name, {})
         if key not in func_dict:
             func_dict[key] = (
                 "_" + name + "_" + "_".join(map(str, args)) + "_" + str(len(func_dict))
             )
         return func_dict[key]
+
+    def mangle_with_namespace(self, name: str, namespace: str) -> str:
+        return f"__{namespace}__{name}"
 
     @staticmethod
     def get_hash(arr):

@@ -3,6 +3,7 @@
 
 from src.main import process
 from allo.ir.types import int32, ConstExpr
+from allo.spmw import kernel
 import numpy as np
 
 
@@ -13,6 +14,7 @@ def test_annassign():
     zero = 0
     one = 1 + zero
 
+    @kernel
     def kernel1() -> int32:
         """
         Initialize variables with constants.
@@ -28,6 +30,7 @@ def test_annassign():
     s = process(kernel1)
     assert s() == one + 1
 
+    @kernel
     def kernel2(A: int32) -> int32:
         """
         Initialize variables with arguments or varibales.
@@ -41,6 +44,7 @@ def test_annassign():
     assert s(2) == 2
     assert s(-1) == -1
 
+    @kernel
     def kernel3(a: int32[8]) -> int32[8]:
         b: int32[8] = a
         return b
@@ -54,6 +58,7 @@ def test_annassign():
 
 
 def test_assign():
+    @kernel
     def kernel1() -> int32:
         B: int32 = 3
         A = B
@@ -62,6 +67,7 @@ def test_assign():
     s = process(kernel1)
     assert s() == 3
 
+    @kernel
     def kernel2() -> int32:
         A: int32 = 0
         B: int32 = 0
@@ -72,6 +78,7 @@ def test_assign():
     s = process(kernel2)
     assert s() == 0
 
+    @kernel
     def kernel3() -> int32[2]:
         b: int32[2]
         b[0] = 1
@@ -81,6 +88,7 @@ def test_assign():
     s = process(kernel3)
     assert np.array_equal(s(), np.array([1, 0], dtype=np.int32))
 
+    @kernel
     def kernel4() -> int32[2]:
         b: int32[2]
         b[0] = 1
@@ -93,6 +101,7 @@ def test_assign():
     s = process(kernel4)
     assert np.array_equal(s(), np.array([1, 0], dtype=np.int32))
 
+    @kernel
     def kernel5() -> int32[4, 3, 2]:
         b: int32[2] = 1
         a: int32[4, 3, 2]
@@ -118,6 +127,7 @@ def test_assign():
         ),
     )
 
+    @kernel
     def kernel6(b: int32[2]) -> int32[4, 3, 2]:
         a: int32[4, 3, 2]
         a[0, :] = 0
@@ -146,6 +156,7 @@ def test_assign():
 
 
 def test_augassign():
+    @kernel
     def kernel1() -> int32:
         A: int32 = 0
         B: int32 = 1
@@ -155,6 +166,7 @@ def test_augassign():
     s = process(kernel1)
     assert s() == 1
 
+    @kernel
     def kernel2() -> int32:
         A: int32[2] = 0
         B: int32 = 1
@@ -164,6 +176,7 @@ def test_augassign():
     s = process(kernel2)
     assert s() == 1
 
+    @kernel
     def kernel3() -> int32:
         A: int32 = 2
         B: int32 = 1
@@ -173,6 +186,7 @@ def test_augassign():
     s = process(kernel3)
     assert s() == 1
 
+    @kernel
     def kernel4() -> int32:
         A: int32 = 2
         B: int32 = 2
@@ -182,6 +196,7 @@ def test_augassign():
     s = process(kernel4)
     assert s() == 4
 
+    @kernel
     def kernel5() -> int32:
         A: int32[2] = 2
         A[0] -= 1
@@ -190,6 +205,7 @@ def test_augassign():
     s = process(kernel5)
     assert s() == 1
 
+    @kernel
     def kernel6() -> int32:
         A: int32[2, 2] = 0
         A[0] -= 1
@@ -198,6 +214,7 @@ def test_augassign():
     s = process(kernel6)
     assert s() == -1
 
+    @kernel
     def kernel7() -> int32:
         A: int32[2, 2] = 2
         A[0] *= 2
@@ -206,6 +223,7 @@ def test_augassign():
     s = process(kernel7)
     assert s() == 4
 
+    @kernel
     def kernel8() -> int32:
         A: int32[2, 2] = 2
         A[0] /= 2
@@ -218,6 +236,7 @@ def test_augassign():
 
 
 def test_broadcast_init():
+    @kernel
     def kernel1() -> int32[2]:
         a: int32[2] = 1
         b: int32[32, 32] = 0
@@ -226,6 +245,7 @@ def test_broadcast_init():
     s = process(kernel1)
     assert np.array_equal(s(), np.array([1, 1], dtype=np.int32))
 
+    @kernel
     def kernel2() -> int32:
         a: int32 = 1
         b: int32[32, 32] = a
@@ -234,6 +254,7 @@ def test_broadcast_init():
     s = process(kernel2)
     assert s() == 1
 
+    @kernel
     def kernel3() -> int32:
         a: int32[32] = 1
         b: int32[4, 32] = a
@@ -242,6 +263,7 @@ def test_broadcast_init():
     s = process(kernel3)
     assert s() == 1
 
+    @kernel
     def kernel4(a: int32[32]) -> int32[32]:
         b: int32[4, 32] = a
         return b[1]
@@ -251,20 +273,22 @@ def test_broadcast_init():
     np_B = s(np_A)
     assert np.array_equal(np_B, np_A)
 
-    def kernel4(a: int32[32]) -> int32[32]:
+    @kernel
+    def kernel5(a: int32[32]) -> int32[32]:
         b: int32[4, 32] = a
         return b[2, :]
 
-    s = process(kernel4)
+    s = process(kernel5)
     np_A = np.random.randint(0, 10, size=32, dtype=np.int32)
     np_B = s(np_A)
     assert np.array_equal(np_B, np_A)
 
-    def kernel5(a: int32[32]) -> int32[2, 32]:
+    @kernel
+    def kernel6(a: int32[32]) -> int32[2, 32]:
         b: int32[4, 2, 32] = a
         return b[3, :]
 
-    s = process(kernel5)
+    s = process(kernel6)
     np_A = np.random.randint(0, 10, size=32, dtype=np.int32)
     np_B = s(np_A)
     assert np.array_equal(np_B[0], np_A)

@@ -4,9 +4,11 @@
 from src.main import process
 from allo.ir.types import int32, ConstExpr, index
 import numpy as np
+from allo.spmw import kernel
 
 
 def test_element_access():
+    @kernel
     def kernel1() -> int32[2]:
         b: int32[2]
         idx: index = 0
@@ -17,6 +19,7 @@ def test_element_access():
     s = process(kernel1)
     assert np.array_equal(s(), np.array([1, 0], dtype=np.int32))
 
+    @kernel
     def kernel2() -> int32[2]:
         b: int32[2]
         b[0] = 1
@@ -26,6 +29,7 @@ def test_element_access():
     s = process(kernel2)
     assert np.array_equal(s(), np.array([1, 0], dtype=np.int32))
 
+    @kernel
     def kernel3() -> int32[2]:
         b: int32[2]
         idx: index = 0
@@ -36,6 +40,7 @@ def test_element_access():
     s = process(kernel3)
     assert np.array_equal(s(), np.array([1, 0], dtype=np.int32))
 
+    @kernel
     def kernel4() -> int32[2, 2]:
         b: int32[2, 2]
         idx: index = 0
@@ -48,6 +53,7 @@ def test_element_access():
     s = process(kernel4)
     assert np.array_equal(s(), np.array([[1, 2], [3, 4]], dtype=np.int32))
 
+    @kernel
     def kernel5(a: int32[2, 2]) -> int32[2, 2]:
         b: int32[2, 2]
         idx: index = 0
@@ -66,6 +72,7 @@ def test_element_access():
 
 
 def test_slice():
+    @kernel
     def kernel1() -> int32[2, 4]:
         b: int32[2, 4]
         idx: index = 0
@@ -78,6 +85,7 @@ def test_slice():
 
     print("test_slice passed")
 
+    @kernel
     def kernel2(a: int32[2, 4]) -> int32[2, 4]:
         b: int32[2, 4]
         idx: index = 0
@@ -90,6 +98,7 @@ def test_slice():
     np_B = s(np_A)
     assert np.array_equal(np_B, np_A + 1)
 
+    @kernel
     def kernel3(a: int32[2, 2, 4]) -> int32[2, 2, 4]:
         b: int32[2, 2, 4]
         idx: index = 0
@@ -102,6 +111,7 @@ def test_slice():
     np_B = s(np_A)
     assert np.array_equal(np_B, np_A + 1)
 
+    @kernel
     def kernel4(a: int32[2, 2, 4]) -> int32[2, 2, 4]:
         b: int32[2, 2, 4]
         idx: index = 0

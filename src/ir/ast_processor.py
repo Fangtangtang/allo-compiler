@@ -28,11 +28,11 @@ class ASTProcessor(ast.NodeTransformer):
             self.proc = processor
             self.name = name
 
-        def __enter__(self): 
+        def __enter__(self):
             # TODO
             ...
 
-        def __exit__(self, exc_type, exc_val, exc_tb): 
+        def __exit__(self, exc_type, exc_val, exc_tb):
             # TODO
             ...
 
@@ -148,25 +148,17 @@ class ASTProcessor(ast.NodeTransformer):
             fn: The function to process.
             instantiate: The arguments to instantiate the function. default to None.
         """
-        module: ast.Module = parse_ast(fn)
-        # print(ast.dump(module, indent=2))
+        func: ast.FunctionDef = parse_ast(fn)
         if instantiate is not None:
             # if instantiate is not None, we need to use the args to instantiate the unique function
-            assert len(module.body) == 1 and isinstance(module.body[0], ast.FunctionDef)
-            node, top_name = self.visit_function_signature(module.body[0], instantiate)
+            node, top_name = self.visit_function_signature(func, instantiate)
         else:
-            if len(module.body) == 1:
-                node, top_name = self.visit_function_signature(module.body[0])
-            else:
-                # FIXME: tentative
-                top_name = None
-                for stmt in module.body:
-                    self.visit(stmt)
+            node, top_name = self.visit_function_signature(func)
         while self.worklist:
             self.visit_function_body(
                 self.symbol_table.functions[self.worklist.popleft()]
             )
-        return module, top_name
+        return func, top_name
 
     def eval_constant(self, node, consts=None):
         """
@@ -1035,9 +1027,8 @@ class ASTProcessor(ast.NodeTransformer):
         raise NotImplementedError
 
     def visit_call_kernel(self, orig_node: ast.Call, func, instantiate: list = None):
-        module: ast.Module = parse_ast(func)
-        assert len(module.body) == 1
-        callee, callee_name = self.visit_function_signature(module.body[0], instantiate)
+        func: ast.FunctionDef = parse_ast(func)
+        callee, callee_name = self.visit_function_signature(func, instantiate)
         # arguments TODO: support kwargs and others?
         assert len(orig_node.args) == len(
             callee.args.args

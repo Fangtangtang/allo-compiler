@@ -5,9 +5,11 @@
 from src.main import process
 import numpy as np
 from allo.ir.types import int32, bool
+from allo.spmw import kernel
 
 
 def test_branch():
+    @kernel
     def kernel1() -> int32:
         A: int32 = 0
         B: int32 = 0
@@ -20,6 +22,7 @@ def test_branch():
     s = process(kernel1)
     assert s() == 1
 
+    @kernel
     def kernel1(A: int32, B: int32[1]) -> int32:
         if A > B[0]:
             B[0] = A
@@ -32,6 +35,7 @@ def test_branch():
     assert s(0, np.array([1], dtype=np.int32)) == 1
     assert s(1, np.array([2], dtype=np.int32)) == 2
 
+    @kernel
     def kernel2() -> int32:
         A: int32 = 0
         B: int32 = 1
@@ -44,6 +48,7 @@ def test_branch():
     s = process(kernel2)
     assert s() == 1
 
+    @kernel
     def kernel2(A: int32, B: int32[1]) -> int32:
         if A > B[0]:
             B[0] = A
@@ -56,6 +61,7 @@ def test_branch():
     assert s(0, np.array([1], dtype=np.int32)) == 1
     assert s(1, np.array([2], dtype=np.int32)) == 2
 
+    @kernel
     def kernel3() -> int32:
         A: int32 = 1
         B: int32 = 0
@@ -70,6 +76,7 @@ def test_branch():
     s = process(kernel3)
     assert s() == 1
 
+    @kernel
     def kernel3(A: int32, B: int32[1]) -> int32:
         if A > B[0]:
             B[0] = A
@@ -84,6 +91,7 @@ def test_branch():
     assert s(0, np.array([1], dtype=np.int32)) == 1
     assert s(1, np.array([2], dtype=np.int32)) == 2
 
+    @kernel
     def kernel4() -> bool:
         A: bool = 1 == 1
         B: bool
@@ -96,6 +104,7 @@ def test_branch():
     s = process(kernel4)
     assert s() == False
 
+    @kernel
     def kernel4(A: bool) -> bool:
         B: bool
         if not A:
@@ -112,6 +121,7 @@ def test_branch():
 
 
 def test_branch_complicate():
+    @kernel
     def kernel1() -> int32:
         A: int32 = 2
         B: int32 = 0
@@ -124,6 +134,7 @@ def test_branch_complicate():
     s = process(kernel1)
     assert s() == 1
 
+    @kernel
     def kernel2() -> int32:
         A: int32 = 0
         B: int32 = -1
@@ -138,6 +149,7 @@ def test_branch_complicate():
     s = process(kernel2)
     assert s() == 0
 
+    @kernel
     def kernel3() -> int32:
         A: int32 = -1
         B: int32 = 0

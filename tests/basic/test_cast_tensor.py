@@ -14,9 +14,11 @@ from allo.ir.types import (
     index,
     UFixed,
 )
+from allo.spmw import kernel
 
 
 def test_cast_assign():
+    @kernel
     def kernel1(a: int16) -> uint16[8]:
         b: int16[8] = a
         c: uint16[8] = b
@@ -26,6 +28,7 @@ def test_cast_assign():
     assert np.array_equal(s(1), np.array([1] * 8, dtype=np.uint16))
     assert np.array_equal(s(2), np.array([2] * 8, dtype=np.uint16))
 
+    @kernel
     def kernel1(a: int16) -> int32[8]:
         b: int16[8] = a
         c: int32[8] = b
@@ -37,6 +40,7 @@ def test_cast_assign():
     assert np.array_equal(s(-1), np.array([-1] * 8, dtype=np.int32))
     assert np.array_equal(s(-2), np.array([-2] * 8, dtype=np.int32))
 
+    @kernel
     def kernel1(a: int16) -> int32[8]:
         b: int16[8] = a
         c: index[8] = b
@@ -46,6 +50,7 @@ def test_cast_assign():
     assert np.array_equal(s(1), np.array([1] * 8, dtype=np.int32))
     assert np.array_equal(s(2), np.array([2] * 8, dtype=np.int32))
 
+    @kernel
     def kernel1(a: int16) -> float32[8]:
         b: int16[8] = a
         c: float32[8] = b
@@ -55,6 +60,7 @@ def test_cast_assign():
     assert np.array_equal(s(1), np.array([1.0] * 8, dtype=np.float32))
     assert np.array_equal(s(2), np.array([2.0] * 8, dtype=np.float32))
 
+    @kernel
     def kernel1(a: int16[4, 4]) -> int32[4, 4]:
         return a
 
@@ -62,6 +68,7 @@ def test_cast_assign():
     np_A = np.random.randint(-100, 100, (4, 4), dtype=np.int16)
     assert np.array_equal(s(np_A), np_A.astype(np.int32))
 
+    @kernel
     def kernel1(a: int16[4, 4]) -> uint32[4, 4]:
         return a
 
@@ -69,6 +76,7 @@ def test_cast_assign():
     np_A = np.random.randint(0, 100, (4, 4), dtype=np.int16)
     assert np.array_equal(s(np_A), np_A.astype(np.uint32))
 
+    @kernel
     def kernel1(a: int16[4, 4]) -> float32[4, 4]:
         return a
 
@@ -76,6 +84,7 @@ def test_cast_assign():
     np_A = np.random.randint(-100, 100, (4, 4), dtype=np.int16)
     assert np.array_equal(s(np_A), np_A.astype(np.float32))
 
+    @kernel
     def kernel1(a: float32[4, 4]) -> int32[4, 4]:
         return a
 
@@ -83,6 +92,7 @@ def test_cast_assign():
     np_A = np.random.rand(4, 4).astype(np.float32)
     assert np.array_equal(s(np_A), np_A.astype(np.int32))
 
+    @kernel
     def kernel2(a: float32[4]) -> uint32[8, 4]:
         b: float32[8, 4] = a
         c: int32[8, 4] = b
@@ -98,6 +108,7 @@ def test_cast_assign():
 
 def test_cast_fixed():
     # [NOTE]: fixed point not supported for llvm backend
+    @kernel
     def kernel1(a: int16) -> uint16[8]:
         b: int16[8] = a
         c: Fixed(12, 4)[8] = b
@@ -105,6 +116,7 @@ def test_cast_fixed():
 
     s = process(kernel1)
 
+    @kernel
     def kernel2(a: int16) -> uint16[8]:
         b: int16[8] = a
         c: UFixed(12, 4)[8] = b
@@ -112,6 +124,7 @@ def test_cast_fixed():
 
     s = process(kernel2)
 
+    @kernel
     def kernel3(a: int16) -> float16[8]:
         b: int16[8] = a
         c: Fixed(12, 4)[8] = b
@@ -119,6 +132,7 @@ def test_cast_fixed():
 
     s = process(kernel3)
 
+    @kernel
     def kernel4(a: int16) -> float32[8]:
         b: int16[8] = a
         c: UFixed(12, 4)[8] = b
@@ -126,6 +140,7 @@ def test_cast_fixed():
 
     s = process(kernel4)
 
+    @kernel
     def kernel5(a: float32) -> float32[8]:
         b: float32[8] = a
         c: Fixed(20, 12)[8] = b
@@ -133,6 +148,7 @@ def test_cast_fixed():
 
     s = process(kernel5)
 
+    @kernel
     def kernel6(a: float32) -> float32[8]:
         b: float32[8] = a
         c: UFixed(20, 12)[8] = b
@@ -144,6 +160,7 @@ def test_cast_fixed():
 
 
 def test_cast_arithmetic():
+    @kernel
     def kernel1(a: int16[8]) -> uint16[8]:
         b: int16[8] = a
         c: uint16[8] = b + 1
@@ -156,6 +173,7 @@ def test_cast_arithmetic():
     np_D = np_C + np_B
     assert np.array_equal(s(np_A), np_D)
 
+    @kernel
     def kernel2(a: int16[4]) -> uint16[4]:
         b: int16[8, 4] = a
         c: uint16[4] = b[0] + b[1]
@@ -170,6 +188,7 @@ def test_cast_arithmetic():
     np_E = np_C + np_D
     assert np.array_equal(s(np_A), np_E)
 
+    @kernel
     def kernel3(a: int16[4]) -> float32[4]:
         b: int16[8, 4] = a
         c: float32[4] = b[0] + b[1]
@@ -184,6 +203,7 @@ def test_cast_arithmetic():
     np_E = np_C + np_D
     assert np.allclose(s(np_A), np_E)
 
+    @kernel
     def kernel4(a: int16[4], b: float32[4]) -> float32[4]:
         c: float32[2, 4] = a[0] + b[0]
         d: float32[4] = a[1] + b[1]

@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import ast
+import copy
 import hashlib
 import inspect
-import textwrap
 import numpy as np
 from collections.abc import Callable
 from types import FunctionType as PyFunctionType
@@ -12,28 +12,9 @@ from allo.ir.types import AlloType
 from allo.memory import Memory
 
 
-def parse_ast(src, verbose=False) -> ast.Module:
-    if isinstance(src, str):
-        starting_line_no = 1
-    else:
-        src, starting_line_no = inspect.getsourcelines(src)
-        src = [textwrap.fill(line, tabsize=4, width=9999) for line in src]
-        src = textwrap.dedent("\n".join(src))
-    tree = ast.parse(src)
-    for child in ast.walk(tree):
-        if hasattr(child, "lineno"):
-            child.lineno += starting_line_no - 1
-        if hasattr(child, "end_lineno"):
-            child.end_lineno += starting_line_no - 1
-    if verbose:
-        print(src)
-        try:
-            import astpretty
-
-            astpretty.pprint(tree, indent=2, show_offsets=False)
-        except ImportError:
-            print(ast.dump(tree))
-    return tree
+def parse_ast(src) -> ast.FunctionDef:
+    assert hasattr(src, "_ast"), "Invalid function"
+    return copy.deepcopy(src._ast)
 
 
 class SymbolTable:

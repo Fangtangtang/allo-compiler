@@ -6,47 +6,52 @@ from src.main import process
 import allo
 from allo.ir.types import int32
 from allo.template import meta_for as allo_for
+from allo.spmw import kernel
 
 
 def test_meta_for():
     # [NOTE]: semantic test only, currently cannot unroll the loop
-    def kernel(A: int32[20]) -> int32[20]:
+    @kernel
+    def kernel1(A: int32[20]) -> int32[20]:
         with allo.meta_for(10) as i:
             A[i] = i
         return A
 
-    s = process(kernel)
+    s = process(kernel1)
     np_A = np.zeros((20,), dtype=np.int32)
     gold = np.zeros((20,), dtype=np.int32)
     for i in range(10):
         gold[i] = i
     assert np.allclose(s(np_A), gold)
 
-    def kernel(A: int32[20]) -> int32[20]:
+    @kernel
+    def kernel2(A: int32[20]) -> int32[20]:
         with allo.meta_for(10) as i:
             A[i + 1] = i
         return A
 
-    s = process(kernel)
+    s = process(kernel2)
     np_A = np.zeros((20,), dtype=np.int32)
     gold = np.zeros((20,), dtype=np.int32)
     for i in range(10):
         gold[i + 1] = i
     assert np.allclose(s(np_A), gold)
 
-    def kernel(A: int32[20]) -> int32[20]:
+    @kernel
+    def kernel3(A: int32[20]) -> int32[20]:
         with allo.meta_for(10) as i:
             A[i * 2] = i
         return A
 
-    s = process(kernel)
+    s = process(kernel3)
     np_A = np.zeros((20,), dtype=np.int32)
     gold = np.zeros((20,), dtype=np.int32)
     for i in range(10):
         gold[i * 2] = i
     assert np.allclose(s(np_A), gold)
 
-    def kernel(A: int32[20]):
+    @kernel
+    def kernel4(A: int32[20]):
         with allo.template.meta_for(10) as i:
             A[i] = i
         with allo_for(10, 20) as i:
@@ -54,7 +59,7 @@ def test_meta_for():
         with allo.meta_for(0, 20, 2) as i:
             A[i] = i * 2
 
-    s = process(kernel)
+    s = process(kernel4)
     np_A = np.zeros((20,), dtype=np.int32)
     gold = np.zeros((20,), dtype=np.int32)
     for i in range(10):
@@ -66,13 +71,14 @@ def test_meta_for():
     s(np_A)
     assert np.allclose(np_A, gold)
 
-    def kernel(A: int32[20]) -> int32[20]:
+    @kernel
+    def kernel5(A: int32[20]) -> int32[20]:
         with allo.meta_for(10) as i:
             with allo.meta_for(2) as j:
                 A[i * 2 + j] = i
         return A
 
-    s = process(kernel)
+    s = process(kernel5)
     np_A = np.zeros((20,), dtype=np.int32)
     gold = np.zeros((20,), dtype=np.int32)
     for i in range(10):
@@ -83,13 +89,14 @@ def test_meta_for():
     def get_constant(value: int):
         return value
 
-    def kernel(A: int32[20]) -> int32[20]:
+    @kernel
+    def kernel6(A: int32[20]) -> int32[20]:
         with allo.meta_for(get_constant(10)) as i:
             with allo.meta_for(get_constant(2)) as j:
                 A[i * 2 + j] = i
         return A
 
-    s = process(kernel)
+    s = process(kernel6)
     np_A = np.zeros((20,), dtype=np.int32)
     gold = np.zeros((20,), dtype=np.int32)
     for i in range(10):
@@ -107,20 +114,22 @@ def test_meta_if():
     def get_False():
         return False
 
-    def kernel(A: int32[10]) -> int32[10]:
+    @kernel
+    def kernel1(A: int32[10]) -> int32[10]:
         with allo.meta_if(10 > 5):
             A[0] = 1
         with allo.meta_if(10 < 5):
             A[0] = 5
         return A
 
-    s = process(kernel)
+    s = process(kernel1)
     np_A = np.zeros((10,), dtype=np.int32)
     gold = np.zeros((10,), dtype=np.int32)
     gold[0] = 1
     assert np.allclose(s(np_A), gold)
 
-    def kernel(A: int32[10]) -> int32[10]:
+    @kernel
+    def kernel2(A: int32[10]) -> int32[10]:
         with allo.meta_if(10 > 5):
             A[0] = 1
         with allo.meta_elif(10 > 5):
@@ -132,14 +141,15 @@ def test_meta_if():
             A[1] = 10
         return A
 
-    s = process(kernel)
+    s = process(kernel2)
     np_A = np.zeros((10,), dtype=np.int32)
     gold = np.zeros((10,), dtype=np.int32)
     gold[0] = 1
     gold[1] = 10
     assert np.allclose(s(np_A), gold)
 
-    def kernel(A: int32[10]) -> int32[10]:
+    @kernel
+    def kernel3(A: int32[10]) -> int32[10]:
         with allo.meta_if(10 > 5):
             A[0] = 1  # hit
         with allo.meta_elif(10 > 5):
@@ -155,14 +165,15 @@ def test_meta_if():
             A[1] = 15  # miss
         return A
 
-    s = process(kernel)
+    s = process(kernel3)
     np_A = np.zeros((10,), dtype=np.int32)
     gold = np.zeros((10,), dtype=np.int32)
     gold[0] = 1
     gold[1] = 10
     assert np.allclose(s(np_A), gold)
 
-    def kernel(A: int32[10]) -> int32[10]:
+    @kernel
+    def kernel4(A: int32[10]) -> int32[10]:
         with allo.meta_if(10 > 5):
             A[0] = 1  # hit
         with allo.meta_elif(10 > 5):
@@ -178,14 +189,15 @@ def test_meta_if():
             A[1] = 15  # hit
         return A
 
-    s = process(kernel)
+    s = process(kernel4)
     np_A = np.zeros((10,), dtype=np.int32)
     gold = np.zeros((10,), dtype=np.int32)
     gold[0] = 1
     gold[1] = 15
     assert np.allclose(s(np_A), gold)
 
-    def kernel(A: int32[10]) -> int32[10]:
+    @kernel
+    def kernel5(A: int32[10]) -> int32[10]:
         with allo.meta_if(get_True()):
             A[0] = 1  # hit
         with allo.meta_elif(get_True()):
@@ -201,7 +213,7 @@ def test_meta_if():
             A[1] = 15  # hit
         return A
 
-    s = process(kernel)
+    s = process(kernel5)
     np_A = np.zeros((10,), dtype=np.int32)
     gold = np.zeros((10,), dtype=np.int32)
     gold[0] = 1

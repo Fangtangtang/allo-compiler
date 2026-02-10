@@ -1,6 +1,7 @@
 from allo.ir.types import int32
 from src.ir.builtin import BuiltinHandler, register_custom_handler
 from src.main import process
+from allo.spmw import kernel
 
 
 @register_custom_handler("bypass")
@@ -17,12 +18,13 @@ class Bypass(BuiltinHandler):
 
 def test_custom_handler():
 
-    def kernel(a: int32) -> int32:
+    @kernel
+    def bypass(a: int32) -> int32:
         b: int32 = a
         Bypass(a, b)
         return b
 
-    s = process(kernel)
+    s = process(bypass)
     print(s(1))
 
 

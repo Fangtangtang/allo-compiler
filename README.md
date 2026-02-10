@@ -5,6 +5,7 @@ The compiler infra of allo
 ### Assignment
 source code
 ```python
+@kernel
 def kernel1() -> int32:
     A: int32 = 0
     B: int32 = 0
@@ -14,6 +15,7 @@ def kernel1() -> int32:
 
 processed ast
 ```txt
+@kernel
 def kernel1() -> __allo__[i32, (), None]:
     A: __allo__[i32, (), None] = __allo__.constant(0, __allo__[i32, (), None])
     B: __allo__[i32, (), None] = __allo__.constant(0, __allo__[i32, (), None])
@@ -45,6 +47,7 @@ module {
 ### Broadcasting
 source code
 ```python
+@kernel
 def kernel2() -> int32:
     a: int32 = 1
     b: int32[32, 32] = a
@@ -54,6 +57,7 @@ def kernel2() -> int32:
 processed ast
 
 ```txt
+@kernel
 def kernel2() -> __allo__[i32, (), None]:
     a: __allo__[i32, (), None] = __allo__.constant(1, __allo__[i32, (), None])
     b: __allo__[i32, (32, 32), None] = __allo__.broadcast(a, (0, 1), __allo__[i32, (32, 32), None])
@@ -83,6 +87,7 @@ module {
 ### Vector Addition
 source code
 ```python
+@kernel
 def vadd(A: float32[32], B: float32[32], C: float32[32]):
     for i in range(32):
         # syntax sugar for lib op "add"
@@ -91,6 +96,7 @@ def vadd(A: float32[32], B: float32[32], C: float32[32]):
 
 processed ast
 ```txt
+@kernel
 def vadd(A: __allo__[f32, (32,), None], B: __allo__[f32, (32,), None], C: __allo__[f32, (32,), None]):
     for i in range(0, 32, 1):
         C[i]: __allo__[f32, (), None] = __allo__.Add(A[i], B[i], __allo__[f32, (), None])

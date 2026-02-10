@@ -7,7 +7,7 @@ from collections import deque, ChainMap
 from collections.abc import Callable
 import numpy as np
 import ast
-from .utils import get_ast, SymbolTable, BlockScopeGuard, Scope
+from .utils import get_ast, SymbolTable, BlockScopeGuard, Scope, ErrorValue
 from .typing_rule import cpp_style_registry
 from allo.spmw import FunctionType
 from allo.ir.types import (
@@ -1141,6 +1141,7 @@ class ASTProcessor(ast.NodeTransformer):
             )
         # return type
         if node.returns is not None:
+            assert not node._type in {FunctionType.WORK, FunctionType.UNIT}
             if isinstance(node.returns, ast.Tuple):
                 # Multiple return values
                 node.returns.shape = []
@@ -1175,6 +1176,7 @@ class ASTProcessor(ast.NodeTransformer):
                     self.put_var(name=arg.arg, val=arg)
                 # unit region
                 node.body = self.visit_body(node.body)
+                node.body.append(ast.Return())
         else:
             with self.function_scope(node):
                 # arguments
@@ -1194,27 +1196,30 @@ class ASTProcessor(ast.NodeTransformer):
         module = self.resolve_node(node.decorator_list[0].func)
         assert module.__module__.startswith("allo.spmw") and module.__name__ == "work"
         node._type = FunctionType.WORK
-        # keywords
-        args = []
-        for kw in node.decorator_list[0].keywords:
-            assert isinstance(kw.value, ast.List)
-            if kw.arg == "mapping":
-                kw.value.elts = [self.visit_constant(c) for c in kw.value.elts]
-            elif kw.arg == "args":
-                for arg in kw.value.elts:
-                    assert isinstance(arg, ast.Name) and self.get_symbol(arg.id)
-                args = kw.value.elts
-            else:
-                raise RuntimeError("Invalid work declaration")
-        node, _ = self.visit_function_signature(node, instantiate=instantiate)
-        node = self.visit_function_body(node)
-        # TODO: replace work declaration as 'function call'
+        with self.block_scope_guard():  # to support args shadowing
+            # keywords
+            args = []
+            for kw in node.decorator_list[0].keywords:
+                assert isinstance(kw.value, ast.List)
+                if kw.arg == "mapping":
+                    kw.value.elts = [self.visit_constant(c) for c in kw.value.elts]
+                elif kw.arg == "args":
+                    # if `unit`` argument is in args, cannot access in `work``
+                    for arg in kw.value.elts:
+                        assert isinstance(arg, ast.Name) and self.get_symbol(arg.id)
+                        self.put_var(
+                            arg.id, ErrorValue(arg.id, "shadowed by work's arg list")
+                        )
+                    args = kw.value.elts
+                else:
+                    raise RuntimeError("Invalid work declaration")
+            node, _ = self.visit_function_signature(node, instantiate=instantiate)
+            node = self.visit_function_body(node)
         call_node = ast.Expr(
             value=ast.Call(
                 func=ast.Name(id=node.name, ctx=ast.Load()), args=args, keywords=[]
             )
         )
-
         return call_node
 
     # ----- invalid syntax -----

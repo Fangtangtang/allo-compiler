@@ -10,10 +10,7 @@ from .ir.ir_builder import IRBuilder
 from allo.backend.llvm import LLVMModule
 
 
-def process(fn: Union[Callable, str], instantiate: list = None):
-    """
-    Compile the input function.
-    """
+def build(fn: Union[Callable, str], instantiate: list = None):
     symbol_table = SymbolTable()
     ast_processor = ASTProcessor(symbol_table, global_symbols=get_global_vars(fn))
     # process the top function
@@ -27,5 +24,21 @@ def process(fn: Union[Callable, str], instantiate: list = None):
     print()
     builder = IRBuilder(symbol_table)
     module = builder.build(node)
+    return module, top_name
+
+
+def process(fn: Union[Callable, str], instantiate: list = None):
+    """
+    Compile the input function.
+    """
+    module, top_name = build(fn, instantiate)
     print(module)
     return LLVMModule(module, top_name)
+
+
+def process_spmw(fn: Union[Callable, str], instantiate: list = None):
+    """
+    Compile the input function in SPMW model.
+    """
+    module, top_name = build(fn, instantiate)
+    print(module)

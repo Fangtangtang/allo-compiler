@@ -141,3 +141,12 @@ class BlockScopeGuard:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.scopes.pop()
+
+
+class ErrorValue:
+    def __init__(self, name, msg):
+        self.name = name
+        self.msg = msg
+
+    def __getattr__(self, attr):
+        raise RuntimeError(f"Use of invalid symbol '{self.name}': {self.msg}")

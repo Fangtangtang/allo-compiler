@@ -25,38 +25,40 @@ from .builtin import BUILTIN_HANDLERS
 
 class ASTProcessor(ast.NodeTransformer):
     class Namespace:
-        def __init__(self, processor: "ASTProcessor", name: str):
+        def __init__(self, processor: "ASTProcessor", node: ast.FunctionDef):
             self.proc = processor
-            self.name = name
+            self.name = node.name
+            self.symbols = getattr(node, "template_bindings", {})
 
         def __enter__(self):
             self.proc.current_namespace = self.name
             self.proc.scopes.append(Scope())
+            self.proc.symbols = ChainMap(self.symbols, self.proc.global_symbols)
 
         def __exit__(self, exc_type, exc_val, exc_tb):
             self.proc.scopes.pop()
             self.proc.current_namespace = None
-            # TODO
-            ...
+            self.proc.symbols = self.proc.global_symbols
 
-    def namespace(self, name: str):
-        return ASTProcessor.Namespace(self, name)
+    def namespace(self, node: ast.FunctionDef):
+        return ASTProcessor.Namespace(self, node)
 
     class FunctionScope:
         def __init__(self, processor: "ASTProcessor", node: ast.FunctionDef):
             self.proc = processor
             self.func = node
+            self.symbols_ckpt = self.proc.symbols
 
         def __enter__(self):
             self.proc.symbols = ChainMap(
-                getattr(self.func, "template_bindings", {}), self.proc.global_symbols
+                getattr(self.func, "template_bindings", {}), self.proc.symbols
             )
             self.proc.current_func = self.func.name
             self.proc.scopes.append(Scope())
 
         def __exit__(self, exc_type, exc_val, exc_tb):
             self.proc.scopes.pop()
-            self.proc.symbols = self.proc.global_symbols
+            self.proc.symbols = self.symbols_ckpt
             self.proc.current_func = None
             self.proc.meta_cond.clear()
 
@@ -1121,10 +1123,8 @@ class ASTProcessor(ast.NodeTransformer):
         if node._type in {FunctionType.KERNEL, FunctionType.UNIT}:
             self.worklist.append(func_name)  # declare only
         node.name = func_name
-        old_symbols = self.symbols
-        self.symbols = ChainMap(
-            getattr(node, "template_bindings", {}), self.global_symbols
-        )
+        symbols_ckpt = self.symbols
+        self.symbols = ChainMap(getattr(node, "template_bindings", {}), self.symbols)
         # arguments
         for arg in node.args.args:
             arg.dtype, arg.shape, arg.spec = self.visit_type_annotation(arg.annotation)
@@ -1135,7 +1135,7 @@ class ASTProcessor(ast.NodeTransformer):
                 arg.dtype, "stateful", False
             ), f"Function parameter '{arg.arg}' cannot be Stateful."
             # FIXME: this assumes functions are under global scope
-            assert arg.arg not in self.global_symbols, (
+            assert arg.arg not in self.symbols, (
                 f"Argument name '{arg.arg}' conflicts with an existing symbol. "
                 "Please choose a different name to avoid the conflict."
             )
@@ -1165,12 +1165,12 @@ class ASTProcessor(ast.NodeTransformer):
                 node.returns.shape = shape
                 node.returns.spec = spec
             node.dtype, node.shape = node.returns.dtype, node.returns.shape
-        self.symbols = old_symbols
+        self.symbols = symbols_ckpt
         return node, func_name
 
     def visit_function_body(self, node: ast.FunctionDef):
         if node._type in {FunctionType.UNIT}:
-            with self.namespace(name=node.name):
+            with self.namespace(node):
                 # arguments
                 for arg in node.args.args:
                     self.put_var(name=arg.arg, val=arg)

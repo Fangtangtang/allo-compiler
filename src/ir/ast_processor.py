@@ -261,11 +261,7 @@ class ASTProcessor(ast.NodeTransformer):
                 return const_dtype, tuple(), None
             size = annotation.slice
             elts = size.elts if isinstance(size, ast.Tuple) else [size]
-            return (
-                base_type,
-                tuple(self.eval_constant(x) for x in elts),
-                Layout([Layout.Replicate] * len(elts)),  # default layout
-            )
+            return base_type, tuple(self.eval_constant(x) for x in elts), None
         if isinstance(annotation, ast.BinOp):
             # e.g., B: Int(32) @ Stateful = 0, a: int32[32] @ Memory(resource="URAM")
             assert isinstance(annotation.op, ast.MatMult)
@@ -288,7 +284,7 @@ class ASTProcessor(ast.NodeTransformer):
             if isinstance(refinement_type, list):
                 refinement_type = Layout(refinement_type)
             return dtype, shape, refinement_type
-        if isinstance(annotation, ast.Constant):
+        if isinstance(annotation, ast.Constant):  # template
             assert isinstance(annotation.value, str)
             tree = ast.parse(annotation.value)
             return self.visit_type_annotation(tree.body[0].value)
@@ -314,6 +310,18 @@ class ASTProcessor(ast.NodeTransformer):
                 ],
                 ctx=ast.Load(),
             ),
+            ctx=ast.Load(),
+        )
+
+    def reset_shape(self, arg: ast.arg, new_shape):
+        """
+        Reset ast argument's shape to a new one. Usually used in sharding.
+        """
+        if arg.shape == new_shape:
+            return
+        arg.shape = new_shape
+        arg.annotation.slice.elts[1] = ast.Tuple(
+            elts=[ast.Constant(value=d) for d in new_shape],
             ctx=ast.Load(),
         )
 
@@ -1198,11 +1206,16 @@ class ASTProcessor(ast.NodeTransformer):
         node._type = FunctionType.WORK
         with self.block_scope_guard():  # to support args shadowing
             # keywords
-            args = []
+            args, grid = [], []
             for kw in node.decorator_list[0].keywords:
                 assert isinstance(kw.value, ast.List)
                 if kw.arg == "mapping":
-                    kw.value.elts = [self.visit_constant(c) for c in kw.value.elts]
+                    elts_ = []
+                    for c in kw.value.elts:
+                        dim = self.visit_constant(c)
+                        grid.append(dim.value)
+                        elts_.append(dim)
+                    kw.value.elts = elts_
                 elif kw.arg == "inputs" or kw.arg == "outputs":
                     # if `unit`` argument is in args, cannot access in `work``
                     for arg in kw.value.elts:
@@ -1231,6 +1244,16 @@ class ASTProcessor(ast.NodeTransformer):
                 assert (
                     arg.dtype == callee_arg.dtype and arg.shape == callee_arg.shape
                 ), "Invalid inputs / outputs mapping, type mismatch."
+                # sharding
+                if getattr(callee_arg, "spec", None) is None:  # default layout
+                    callee_arg.spec = Layout([Layout.Replicate] * len(arg.shape))
+                assert isinstance(
+                    callee_arg.spec, Layout
+                ), f"Invalid type refinement: {callee_arg.spec}"
+                # update argument shape with local shape
+                self.reset_shape(
+                    callee_arg, callee_arg.spec.shard(callee_arg.shape, grid)
+                )
             node = self.visit_function_body(node)
         call_node = ast.Expr(
             value=ast.Call(

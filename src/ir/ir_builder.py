@@ -50,6 +50,7 @@ from allo._mlir.ir import (
 )
 from allo.spmw import FunctionType as FuncType
 from allo.utils import register_dialect
+from allo.memory import Layout
 from allo.ir.utils import MockArg, MockScalar, MockBuffer, MockCallResultTuple
 from .utils import SymbolTable, BlockScopeGuard, Scope
 from .builtin import BUILTIN_HANDLERS
@@ -153,6 +154,20 @@ class IRBuilder(ast.NodeVisitor):
             self.pop_ip()
             return self.module
 
+    def parse_type_ann(self, annotation: ast.Subscript):
+        assert (
+            isinstance(annotation.slice, ast.Tuple) and len(annotation.slice.elts) == 3
+        )  # by construction
+        dtype = annotation.slice.elts[0]
+        shape = annotation.slice.elts[1]
+        assert isinstance(dtype, ast.Name) and isinstance(shape, ast.Tuple)
+        spec = annotation.slice.elts[2]
+        assert isinstance(spec, ast.Name)
+        allo_type = self.symbol_table.types[dtype.id]
+        shape = [int(size.value) for size in shape.elts]
+        spec = None if spec.id == "None" else self.symbol_table.types[spec.id]
+        return allo_type.build(), shape, spec, dtype.id.startswith("u")
+
     def build_type(self, annotation: ast.Subscript, force_memref: bool = False):
         """
         build type from annotation
@@ -164,18 +179,16 @@ class IRBuilder(ast.NodeVisitor):
         Returns:
             type, is_unsigned # FIXME: find a better way to handle unsigned
         """
-        assert (
-            isinstance(annotation.slice, ast.Tuple) and len(annotation.slice.elts) == 3
-        )  # by construction
-        dtype = annotation.slice.elts[0]
-        shape = annotation.slice.elts[1]
-        spec = annotation.slice.elts[2]
-        assert isinstance(dtype, ast.Name) and isinstance(shape, ast.Tuple)
-        allo_type = self.symbol_table.types[dtype.id]
-        shape = [int(size.value) for size in shape.elts]
+        dtype, shape, _, is_unsign = self.parse_type_ann(annotation)
         if len(shape) == 0 and not force_memref:
-            return allo_type.build(), dtype.id.startswith("u")
-        return MemRefType.get(shape, allo_type.build()), dtype.id.startswith("u")
+            return dtype, is_unsign
+        return MemRefType.get(shape, dtype), is_unsign
+
+    def build_work_arg_type(self, annotation: ast.Subscript, is_tensor: bool = True):
+        dtype, shape, spec, is_unsign = self.parse_type_ann(annotation)
+        if is_tensor:
+            return RankedTensorType.get(shape, dtype), spec, is_unsign
+        return MemRefType.get(shape, dtype), spec, is_unsign
 
     def build_buffer(self, memref_type: MemRefType, is_unsigned: bool):
         buffer = memref_d.AllocOp(memref_type, [], [], ip=self.get_ip())
@@ -548,7 +561,6 @@ class IRBuilder(ast.NodeVisitor):
         raise NotImplementedError
 
     def visit_work(self, callee: ast.FunctionDef):
-        # FIXME: tentative
         callee_name = callee.name
         grid, inputs, outputs = None, None, None
         for kw in callee.decorator_list[0].keywords:
@@ -570,38 +582,58 @@ class IRBuilder(ast.NodeVisitor):
         results = [
             RankedTensorType.get(o.type.shape, o.type.element_type) for o in outputs
         ]
-        shard = [
-            sdy_d.TensorShardingAttr.get(
-                mesh.sym_name.value,
-                [
-                    sdy_d.DimensionShardingAttr.get(
-                        axes=[sdy_d.AxisRefAttr.get(name=f"{i}")],
-                        is_closed=True,
-                    )
-                    for i in range(len(grid))
-                ],
-                # replicated_axes, # TODO
-                # unreduced_axes, # TODO
+        in_shard, out_shard, local_types, output_types = [], [], [], []
+        for in_arg in callee.args.args[: len(inputs)]:
+            t_type, spec, is_unsign = self.build_work_arg_type(in_arg.annotation)
+            local_types.append(t_type)
+            in_shard.append(
+                sdy_d.TensorShardingAttr.get(
+                    mesh.sym_name.value,
+                    [
+                        sdy_d.DimensionShardingAttr.get(
+                            axes=(
+                                [sdy_d.AxisRefAttr.get(name=f"{p.axis}")]
+                                if isinstance(p, Layout.Shard)
+                                else []
+                            ),
+                            is_closed=True,
+                        )
+                        for p in spec.partitions
+                    ],
+                )
             )
-        ]
+        for out_arg in callee.args.args[len(inputs) :]:
+            t_type, spec, is_unsign = self.build_work_arg_type(
+                out_arg.annotation, False
+            )
+            output_types.append(t_type)
+            out_shard.append(
+                sdy_d.TensorShardingAttr.get(
+                    mesh.sym_name.value,
+                    [
+                        sdy_d.DimensionShardingAttr.get(
+                            axes=(
+                                [sdy_d.AxisRefAttr.get(name=f"{p.axis}")]
+                                if isinstance(p, Layout.Shard)
+                                else []
+                            ),
+                            is_closed=True,
+                        )
+                        for p in spec.partitions
+                    ],
+                )
+            )
+        # FIXME: tentative
         comp_op = sdy_d.ManualComputationOp(
             results,
             inputs,
-            sdy_d.TensorShardingPerValueAttr.get(shard * len(inputs)),
-            sdy_d.TensorShardingPerValueAttr.get(shard * len(outputs)),
+            sdy_d.TensorShardingPerValueAttr.get(in_shard),
+            sdy_d.TensorShardingPerValueAttr.get(out_shard),
             sdy_d.ManualAxesAttr.get(
                 [StringAttr.get(f"{i}") for i in range(len(grid))]
             ),
             ip=self.get_ip(),
         )
-        local_types = []
-        for input_ in inputs:
-            shape = [orig // dim for orig, dim in zip(input_.type.shape, grid)]
-            local_types.append(RankedTensorType.get(shape, input_.type.element_type))
-        output_types = []
-        for output_ in outputs:
-            shape = [orig // dim for orig, dim in zip(output_.type.shape, grid)]
-            output_types.append(MemRefType.get(shape, output_.type.element_type))
         block = comp_op.body.blocks.append(*local_types)  # FIXME: local size
         self.set_ip(block)
         # convert inputs to buffer
@@ -612,9 +644,7 @@ class IRBuilder(ast.NodeVisitor):
             for o in output_types
         ]
         args.extend(out_args)
-        call_op = func_d.CallOp(
-            [], FlatSymbolRefAttr.get(callee_name), args, ip=self.get_ip()
-        )
+        func_d.CallOp([], FlatSymbolRefAttr.get(callee_name), args, ip=self.get_ip())
         # convert output to tensor
         rets = [self.to_tensor(self.get_op_result(o)) for o in out_args]
         sdy_d.return_(rets, ip=self.get_ip())

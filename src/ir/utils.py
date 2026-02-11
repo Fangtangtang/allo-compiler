@@ -28,7 +28,7 @@ class SymbolTable:
         # global: variable name -> variable node
         self.variables = {}
 
-        self.types = {}  # str(dtype) -> AlloType
+        self.types = {}  # str(dtype) -> AlloType / refinement
         self.global_symbols = {}  # str -> python object
 
         self.global_ops = []

@@ -297,6 +297,9 @@ class ASTProcessor(ast.NodeTransformer):
         dtype_name = str(dtype)
         if dtype_name not in self.symbol_table.types:
             self.symbol_table.types[dtype_name] = dtype
+        spec_name = str(spec)
+        if spec and spec_name not in self.symbol_table.types:
+            self.symbol_table.types[spec_name] = spec
         return ast.Subscript(
             value=ast.Name(id="__allo__", ctx=ast.Load()),
             slice=ast.Tuple(
@@ -306,24 +309,29 @@ class ASTProcessor(ast.NodeTransformer):
                         elts=[ast.Constant(value=d) for d in shape],
                         ctx=ast.Load(),
                     ),
-                    ast.Name(id=str(spec), ctx=ast.Load()),
+                    ast.Name(id=spec_name, ctx=ast.Load()),
                 ],
                 ctx=ast.Load(),
             ),
             ctx=ast.Load(),
         )
 
-    def reset_shape(self, arg: ast.arg, new_shape):
+    def reset_type(self, arg: ast.arg, shape=None, spec=None):
         """
         Reset ast argument's shape to a new one. Usually used in sharding.
         """
-        if arg.shape == new_shape:
-            return
-        arg.shape = new_shape
-        arg.annotation.slice.elts[1] = ast.Tuple(
-            elts=[ast.Constant(value=d) for d in new_shape],
-            ctx=ast.Load(),
-        )
+        if arg.shape != shape:
+            arg.shape = shape
+            arg.annotation.slice.elts[1] = ast.Tuple(
+                elts=[ast.Constant(value=d) for d in shape],
+                ctx=ast.Load(),
+            )
+        if getattr(arg, "spec", None) != spec:
+            arg.spec = spec
+            spec_name = str(spec)
+            if spec and spec_name not in self.symbol_table.types:
+                self.symbol_table.types[spec_name] = spec
+            arg.annotation.slice.elts[2] = ast.Name(id=spec_name, ctx=ast.Load())
 
     def finalize_dtype(self, node: ast.AST, target_dtype: AlloType = None):
         """
@@ -1245,14 +1253,15 @@ class ASTProcessor(ast.NodeTransformer):
                     arg.dtype == callee_arg.dtype and arg.shape == callee_arg.shape
                 ), "Invalid inputs / outputs mapping, type mismatch."
                 # sharding
-                if getattr(callee_arg, "spec", None) is None:  # default layout
-                    callee_arg.spec = Layout([Layout.Replicate] * len(arg.shape))
+                spec = getattr(callee_arg, "spec", None)
+                if spec is None:
+                    spec = Layout([Layout.Replicate] * len(arg.shape))
                 assert isinstance(
-                    callee_arg.spec, Layout
+                    spec, Layout
                 ), f"Invalid type refinement: {callee_arg.spec}"
                 # update argument shape with local shape
-                self.reset_shape(
-                    callee_arg, callee_arg.spec.shard(callee_arg.shape, grid)
+                self.reset_type(
+                    callee_arg, shape=spec.shard(callee_arg.shape, grid), spec=spec
                 )
             node = self.visit_function_body(node)
         call_node = ast.Expr(

@@ -8,6 +8,7 @@ from allo._mlir.dialects import (
     memref as memref_d,
     affine as affine_d,
     scf as scf_d,
+    sdy as sdy_d,
     arith as arith_d,
     math as math_d,
     linalg as linalg_d,
@@ -44,6 +45,7 @@ from allo._mlir.ir import (
     OpResultList,
     StridedLayoutAttr,
 )
+from allo.spmw import FunctionType as FuncType
 from allo.utils import register_dialect
 from allo.ir.utils import MockArg, MockScalar, MockBuffer, MockCallResultTuple
 from .utils import SymbolTable, BlockScopeGuard, Scope
@@ -56,7 +58,7 @@ class IRBuilder(ast.NodeVisitor):
         self.symbol_table: SymbolTable = symbol_table
         self.scopes: list[Scope] = []
         self.ctx: Context = Context()
-        register_dialect(self.ctx)
+        register_dialect(self.ctx, True)
         self.module: Module = None
 
         self.current_func: func_d.FuncOp = None  # the function under construction
@@ -544,18 +546,21 @@ class IRBuilder(ast.NodeVisitor):
         if isinstance(node.func, ast.Name):
             callee_name = node.func.id
             callee = self.symbol_table.functions[callee_name]
-            rets = (
-                callee.returns.elts
-                if isinstance(callee.returns, ast.Tuple)
-                else [callee.returns] if callee.returns is not None else []
-            )
-            call_op = func_d.CallOp(
-                [self.build_type(ret)[0] for ret in rets],
-                FlatSymbolRefAttr.get(callee_name),
-                [self.get_op_result(self.visit(arg)) for arg in node.args],
-                ip=self.get_ip(),
-            )
-            return call_op
+            if callee._type in {FuncType.WORK}:
+                pass
+            else:
+                rets = (
+                    callee.returns.elts
+                    if isinstance(callee.returns, ast.Tuple)
+                    else [callee.returns] if callee.returns is not None else []
+                )
+                call_op = func_d.CallOp(
+                    [self.build_type(ret)[0] for ret in rets],
+                    FlatSymbolRefAttr.get(callee_name),
+                    [self.get_op_result(self.visit(arg)) for arg in node.args],
+                    ip=self.get_ip(),
+                )
+                return call_op
         raise NotImplementedError
 
     def visit_FunctionDef(self, node: ast.FunctionDef):

@@ -1203,14 +1203,17 @@ class ASTProcessor(ast.NodeTransformer):
                 assert isinstance(kw.value, ast.List)
                 if kw.arg == "mapping":
                     kw.value.elts = [self.visit_constant(c) for c in kw.value.elts]
-                elif kw.arg == "args":
+                elif kw.arg == "inputs" or kw.arg == "outputs":
                     # if `unit`` argument is in args, cannot access in `work``
                     for arg in kw.value.elts:
                         assert isinstance(arg, ast.Name) and self.get_symbol(arg.id)
                         self.put_var(
                             arg.id, ErrorValue(arg.id, "shadowed by work's arg list")
                         )
-                    args = kw.value.elts
+                    if kw.arg == "inputs":
+                        args = kw.value.elts + args
+                    else:
+                        args + kw.value.elts
                 else:
                     raise RuntimeError("Invalid work declaration")
             node, _ = self.visit_function_signature(node, instantiate=instantiate)

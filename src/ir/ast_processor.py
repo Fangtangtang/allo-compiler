@@ -1206,17 +1206,31 @@ class ASTProcessor(ast.NodeTransformer):
                 elif kw.arg == "inputs" or kw.arg == "outputs":
                     # if `unit`` argument is in args, cannot access in `work``
                     for arg in kw.value.elts:
-                        assert isinstance(arg, ast.Name) and self.get_symbol(arg.id)
+                        arg_ = self.get_symbol(arg.id)
+                        arg.dtype, arg.shape = arg_.dtype, arg_.shape
+                        assert isinstance(arg, ast.Name) and arg_
                         self.put_var(
                             arg.id, ErrorValue(arg.id, "shadowed by work's arg list")
                         )
                     if kw.arg == "inputs":
                         args = kw.value.elts + args
                     else:
-                        args + kw.value.elts
+                        args += kw.value.elts
                 else:
                     raise RuntimeError("Invalid work declaration")
             node, _ = self.visit_function_signature(node, instantiate=instantiate)
+            assert (
+                node.returns is None
+            ), "Invalid work. work should not have return value."
+            # check arg mapping
+            assert len(node.args.args) == len(
+                args
+            ), "Invalid inputs / outputs mapping, number mismatch."
+            for arg, callee_arg in zip(args, node.args.args):
+                assert len(callee_arg.shape) > 0, "work's arguments should be tensors"
+                assert (
+                    arg.dtype == callee_arg.dtype and arg.shape == callee_arg.shape
+                ), "Invalid inputs / outputs mapping, type mismatch."
             node = self.visit_function_body(node)
         call_node = ast.Expr(
             value=ast.Call(

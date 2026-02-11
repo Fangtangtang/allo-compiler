@@ -4,8 +4,10 @@
 import ast
 from allo._mlir.dialects import (
     allo as allo_d,
+    bufferization as buf_d,
     func as func_d,
     memref as memref_d,
+    tensor as tensor_d,
     affine as affine_d,
     scf as scf_d,
     sdy as sdy_d,
@@ -23,6 +25,7 @@ from allo._mlir.ir import (
     BlockArgument,
     FunctionType,
     MemRefType,
+    RankedTensorType,
     IndexType,
     ShapedType,
     IntegerType,
@@ -95,6 +98,9 @@ class IRBuilder(ast.NodeVisitor):
 
     def get_ip(self):
         return self.ip_stack[-1]
+
+    def get_global_ip(self):
+        return self.ip_stack[0]
 
     def pop_ip(self):
         return self.ip_stack.pop()
@@ -176,6 +182,14 @@ class IRBuilder(ast.NodeVisitor):
         if is_unsigned:
             buffer.attributes["unsigned"] = UnitAttr.get()
         return buffer
+
+    def to_tensor(self, buffer):
+        result = RankedTensorType.get(buffer.type.shape, buffer.type.element_type)
+        return buf_d.to_tensor(result, buffer, ip=self.get_ip())
+
+    def to_buffer(self, tensor):
+        result = MemRefType.get(tensor.type.shape, tensor.type.element_type)
+        return buf_d.to_buffer(result, tensor, ip=self.get_ip())
 
     def visit_Name(self, node: ast.Name):
         var = self.get_symbol(node.id)
@@ -533,6 +547,83 @@ class IRBuilder(ast.NodeVisitor):
     def visit_With(self, node: ast.With):
         raise NotImplementedError
 
+    def visit_work(self, callee: ast.FunctionDef):
+        # FIXME: tentative
+        callee_name = callee.name
+        grid, inputs, outputs = None, None, None
+        for kw in callee.decorator_list[0].keywords:
+            if kw.arg == "mapping":
+                grid = [c.value for c in kw.value.elts]
+            elif kw.arg == "inputs":
+                inputs = [
+                    self.to_tensor(self.get_op_result(self.visit(e)))
+                    for e in kw.value.elts
+                ]
+            elif kw.arg == "outputs":
+                outputs = [self.get_op_result(self.visit(e)) for e in kw.value.elts]
+        # create work grid in global scope
+        with self.get_global_ip():
+            axis = [sdy_d.MeshAxisAttr.get(f"{i}", dim) for i, dim in enumerate(grid)]
+            mesh = sdy_d.mesh(
+                sym_name=f"{callee_name}_mesh", mesh=sdy_d.MeshAttr.get(axis)
+            )
+        results = [
+            RankedTensorType.get(o.type.shape, o.type.element_type) for o in outputs
+        ]
+        shard = [
+            sdy_d.TensorShardingAttr.get(
+                mesh.sym_name.value,
+                [
+                    sdy_d.DimensionShardingAttr.get(
+                        axes=[sdy_d.AxisRefAttr.get(name=f"{i}")],
+                        is_closed=True,
+                    )
+                    for i in range(len(grid))
+                ],
+                # replicated_axes, # TODO
+                # unreduced_axes, # TODO
+            )
+        ]
+        comp_op = sdy_d.ManualComputationOp(
+            results,
+            inputs,
+            sdy_d.TensorShardingPerValueAttr.get(shard * len(inputs)),
+            sdy_d.TensorShardingPerValueAttr.get(shard * len(outputs)),
+            sdy_d.ManualAxesAttr.get(
+                [StringAttr.get(f"{i}") for i in range(len(grid))]
+            ),
+            ip=self.get_ip(),
+        )
+        local_types = []
+        for input_ in inputs:
+            shape = [orig // dim for orig, dim in zip(input_.type.shape, grid)]
+            local_types.append(RankedTensorType.get(shape, input_.type.element_type))
+        output_types = []
+        for output_ in outputs:
+            shape = [orig // dim for orig, dim in zip(output_.type.shape, grid)]
+            output_types.append(MemRefType.get(shape, output_.type.element_type))
+        block = comp_op.body.blocks.append(*local_types)  # FIXME: local size
+        self.set_ip(block)
+        # convert inputs to buffer
+        args = [self.to_buffer(input_) for input_ in block.arguments]
+        # allocate buffer for outputs
+        out_args = [
+            self.build_buffer(o, is_unsigned=False)  # TODO: usigned?
+            for o in output_types
+        ]
+        args.extend(out_args)
+        call_op = func_d.CallOp(
+            [], FlatSymbolRefAttr.get(callee_name), args, ip=self.get_ip()
+        )
+        # convert output to tensor
+        rets = [self.to_tensor(self.get_op_result(o)) for o in out_args]
+        sdy_d.return_(rets, ip=self.get_ip())
+        self.pop_ip()
+        # tensor output to buffer
+        for comp_out, work_out in zip(comp_op.results, outputs):
+            buffer = self.to_buffer(comp_out)
+            memref_d.copy(buffer, work_out, ip=self.get_ip())
+
     def visit_Call(self, node: ast.Call):
         if isinstance(node.func, ast.Attribute) and isinstance(
             node.func.value, ast.Name
@@ -547,20 +638,20 @@ class IRBuilder(ast.NodeVisitor):
             callee_name = node.func.id
             callee = self.symbol_table.functions[callee_name]
             if callee._type in {FuncType.WORK}:
-                pass
-            else:
-                rets = (
-                    callee.returns.elts
-                    if isinstance(callee.returns, ast.Tuple)
-                    else [callee.returns] if callee.returns is not None else []
-                )
-                call_op = func_d.CallOp(
-                    [self.build_type(ret)[0] for ret in rets],
-                    FlatSymbolRefAttr.get(callee_name),
-                    [self.get_op_result(self.visit(arg)) for arg in node.args],
-                    ip=self.get_ip(),
-                )
-                return call_op
+                self.visit_work(callee)
+                return None
+            rets = (
+                callee.returns.elts
+                if isinstance(callee.returns, ast.Tuple)
+                else [callee.returns] if callee.returns is not None else []
+            )
+            call_op = func_d.CallOp(
+                [self.build_type(ret)[0] for ret in rets],
+                FlatSymbolRefAttr.get(callee_name),
+                [self.get_op_result(self.visit(arg)) for arg in node.args],
+                ip=self.get_ip(),
+            )
+            return call_op
         raise NotImplementedError
 
     def visit_FunctionDef(self, node: ast.FunctionDef):

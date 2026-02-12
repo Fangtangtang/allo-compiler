@@ -510,8 +510,8 @@ def dummy_comparison_rule():
         (Index, Index): lambda t1, t2: (allo_bool, t1, t2),
         (Index, Float): lambda t1, t2: (allo_bool, t2, t2),
         # python native value
-        (Index, int): lambda t1, v2: (allo_bool, t1, t1),
-        (int, Index): lambda v1, t2: (allo_bool, t2, t2),
+        (Index, int): lambda t1, v2: (allo_bool, UInt(32), UInt(32)),
+        (int, Index): lambda v1, t2: (allo_bool, UInt(32), UInt(32)),
     }
     float_rules = {
         (Float, Int): lambda t1, t2: (
@@ -633,10 +633,10 @@ class LtHandler(BuiltinHandler):
             return arith_d.CmpFOp(4, left, right, ip=self.builder.get_ip())
         # fixed
         if is_unsigned:
-            op = allo_d.allo_d.CmpFixedOp(6, left, right, ip=self.builder.get_ip())
+            op = allo_d.CmpFixedOp(6, left, right, ip=self.builder.get_ip())
             op.attributes["unsigned"] = UnitAttr.get()
             return op
-        return allo_d.allo_d.CmpFixedOp(2, left, right, ip=self.builder.get_ip())
+        return allo_d.CmpFixedOp(2, left, right, ip=self.builder.get_ip())
 
     @staticmethod
     def infer(*args):
@@ -666,10 +666,10 @@ class LtEHandler(BuiltinHandler):
             return arith_d.CmpFOp(5, left, right, ip=self.builder.get_ip())
         # fixed
         if is_unsigned:
-            op = allo_d.allo_d.CmpFixedOp(7, left, right, ip=self.builder.get_ip())
+            op = allo_d.CmpFixedOp(7, left, right, ip=self.builder.get_ip())
             op.attributes["unsigned"] = UnitAttr.get()
             return op
-        return allo_d.allo_d.CmpFixedOp(3, left, right, ip=self.builder.get_ip())
+        return allo_d.CmpFixedOp(3, left, right, ip=self.builder.get_ip())
 
     @staticmethod
     def infer(*args):
@@ -699,10 +699,10 @@ class GtHandler(BuiltinHandler):
             return arith_d.CmpFOp(2, left, right, ip=self.builder.get_ip())
         # fixed
         if is_unsigned:
-            op = allo_d.allo_d.CmpFixedOp(8, left, right, ip=self.builder.get_ip())
+            op = allo_d.CmpFixedOp(8, left, right, ip=self.builder.get_ip())
             op.attributes["unsigned"] = UnitAttr.get()
             return op
-        return allo_d.allo_d.CmpFixedOp(4, left, right, ip=self.builder.get_ip())
+        return allo_d.CmpFixedOp(4, left, right, ip=self.builder.get_ip())
 
     @staticmethod
     def infer(*args):
@@ -732,10 +732,10 @@ class GtEHandler(BuiltinHandler):
             return arith_d.CmpFOp(3, left, right, ip=self.builder.get_ip())
         # fixed
         if is_unsigned:
-            op = allo_d.allo_d.CmpFixedOp(9, left, right, ip=self.builder.get_ip())
+            op = allo_d.CmpFixedOp(9, left, right, ip=self.builder.get_ip())
             op.attributes["unsigned"] = UnitAttr.get()
             return op
-        return allo_d.allo_d.CmpFixedOp(5, left, right, ip=self.builder.get_ip())
+        return allo_d.CmpFixedOp(5, left, right, ip=self.builder.get_ip())
 
     @staticmethod
     def infer(*args):

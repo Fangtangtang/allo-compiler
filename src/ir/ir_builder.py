@@ -7,13 +7,10 @@ from allo._mlir.dialects import (
     bufferization as buf_d,
     func as func_d,
     memref as memref_d,
-    tensor as tensor_d,
     affine as affine_d,
     scf as scf_d,
     sdy as sdy_d,
     arith as arith_d,
-    math as math_d,
-    linalg as linalg_d,
 )
 from allo._mlir.ir import (
     Context,

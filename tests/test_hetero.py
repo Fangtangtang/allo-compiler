@@ -20,6 +20,17 @@ def test_get_wid():
 
     s = process_spmw(top)
 
+    @spmw.unit()
+    def top(A: int32[1024], B: int32[1024]):
+        @spmw.work(mapping=[4], inputs=[A], outputs=[B])
+        def core(local_A: int32[1024] @ [S(0)], local_B: int32[1024] @ [S(0)]):
+            pi: ConstExpr[index] = spmw.get_wid()
+            if pi > 1:
+                local_B[:] = local_A + pi
+            else:
+                local_B[:] = local_A - pi
+
+    s = process_spmw(top)
 
 if __name__ == "__main__":
     test_get_wid()

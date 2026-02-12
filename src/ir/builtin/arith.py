@@ -507,7 +507,7 @@ def dummy_comparison_rule():
                 else TypeError(f"{t1}, {t2} fail binary comparison rule")
             )
         ),
-        (Index, Index): lambda t1, t2: (allo_bool, t1, t2),
+        (Index, Index): lambda t1, t2: (allo_bool, UInt(32), UInt(32)),
         (Index, Float): lambda t1, t2: (allo_bool, t2, t2),
         # python native value
         (Index, int): lambda t1, v2: (allo_bool, UInt(32), UInt(32)),

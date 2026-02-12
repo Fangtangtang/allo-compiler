@@ -10,7 +10,7 @@ S = Layout.Shard
 R = Layout.Replicate
 
 
-def test_get_wid():
+def test_get_wid_1D():
     @spmw.unit()
     def top(A: int32[1024], B: int32[1024]):
         @spmw.work(mapping=[4], inputs=[A], outputs=[B])
@@ -32,5 +32,30 @@ def test_get_wid():
 
     s = process_spmw(top)
 
+
+def test_get_wid_2D():
+    @spmw.unit()
+    def top(A: int32[64, 64], B: int32[64, 64], C: int32[64, 64], D: int32[64, 64]):
+        @spmw.work(mapping=[2, 2], inputs=[A], outputs=[B])
+        def core1(
+            local_A: int32[64, 64] @ [S(0), S(1)], local_B: int32[64, 64] @ [S(0), S(1)]
+        ):
+            pi, pj = spmw.get_wid()
+            local_B[:, :] = local_A + pi - pj
+
+        @spmw.work(mapping=[2, 2], inputs=[C], outputs=[D])
+        def core2(
+            local_A: int32[64, 64] @ [S(0), S(1)], local_B: int32[64, 64] @ [S(0), S(1)]
+        ):
+            pi, pj = spmw.get_wid()
+            if pi > pj:
+                local_B[:, :] = local_A + pi - pj
+            else:
+                local_B[:, :] = local_A
+
+    s = process_spmw(top)
+
+
 if __name__ == "__main__":
-    test_get_wid()
+    test_get_wid_1D()
+    test_get_wid_2D()

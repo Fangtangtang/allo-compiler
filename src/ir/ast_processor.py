@@ -82,6 +82,7 @@ class ASTProcessor(ast.NodeTransformer):
 
         self.current_func: str = None
         self.symbols = global_symbols
+        self.work_constexpr = {}  # per work instance's constexprs
         # keep track of metaprogramming conditions, allow nesting
         self.meta_cond: list[bool] = []
 
@@ -741,19 +742,25 @@ class ASTProcessor(ast.NodeTransformer):
         )
         node_list = []
         if isinstance(node.value, ast.Call) and len(targets) > 1:
+            # function call with multiple returns
             callee = self.visit(node.value)
-            result_name = f"_res_{id(callee)}"  # unique name
-            call_node = ast.Assign(
-                targets=[ast.Name(id=result_name, ctx=ast.Store())], value=callee
-            )
-            ast.copy_location(call_node, node)
-            node_list.append(call_node)
-            values = []
-            res = ast.Name(id=result_name, ctx=ast.Load())
-            for i, (dtype, shape) in enumerate(zip(callee.dtype, callee.shape)):
-                value = ast.Subscript(value=res, slice=ast.Constant(i), ctx=ast.Load())
-                value.dtype, value.shape = dtype, shape  # TODO: spec
-                values.append(value)
+            if isinstance(callee, list):
+                values = callee
+            else:
+                result_name = f"_res_{id(callee)}"  # unique name
+                call_node = ast.Assign(
+                    targets=[ast.Name(id=result_name, ctx=ast.Store())], value=callee
+                )
+                ast.copy_location(call_node, node)
+                node_list.append(call_node)
+                values = []
+                res = ast.Name(id=result_name, ctx=ast.Load())
+                for i, (dtype, shape) in enumerate(zip(callee.dtype, callee.shape)):
+                    value = ast.Subscript(
+                        value=res, slice=ast.Constant(i), ctx=ast.Load()
+                    )
+                    value.dtype, value.shape = dtype, shape  # TODO: spec
+                    values.append(value)
         else:
             values = (
                 node.value.elts if isinstance(node.value, ast.Tuple) else [node.value]
@@ -1112,6 +1119,13 @@ class ASTProcessor(ast.NodeTransformer):
             instantiate = [self.eval_constant(e) for e in elts]
             func = self.resolve_node(node.func.value)
             return self.visit_call_kernel(node, func, instantiate)
+        if isinstance(node.func, ast.Attribute):
+            module = self.resolve_node(node.func)
+            if module and module.__module__.startswith("allo.spmw"):
+                attr = module.__name__
+                assert attr in self.work_constexpr, f"{attr} must be in work."
+                values = self.work_constexpr[attr]
+                return values if len(values) > 1 else values[0]
         # TODO
         return node
 
@@ -1263,7 +1277,37 @@ class ASTProcessor(ast.NodeTransformer):
                 self.reset_type(
                     callee_arg, shape=spec.shard(callee_arg.shape, grid), spec=spec
                 )
-            node = self.visit_function_body(node)
+            with self.function_scope(node):
+                # arguments
+                for arg in node.args.args:
+                    self.put_var(name=arg.arg, val=arg)
+                # internally insert `get_wid` as the first statement
+                targets = []
+                attr = "get_wid"
+                for i in range(len(grid)):
+                    target = ast.Name(id=f"__wid_{i}", ctx=ast.Store())  # reserved word
+                    target.dtype, target.shape = Index(), tuple()
+                    target.dtype.constexpr = True  # immutable
+                    targets.append(target)
+                self.work_constexpr[attr] = targets
+                op = ast.Assign(
+                    targets=targets,
+                    value=ast.Call(
+                        func=ast.Attribute(
+                            value=ast.Name(id="__allo__", ctx=ast.Load()),
+                            attr=attr,
+                            ctx=ast.Load(),
+                        ),
+                        args=[],
+                        keywords=[],
+                    ),
+                )
+                ast.copy_location(op, node)
+                new_body = [op]
+                new_body.extend(self.visit_body(node.body))
+                new_body.append(ast.Return())
+                node.body = new_body
+                self.work_constexpr.clear()
         call_node = ast.Expr(
             value=ast.Call(
                 func=ast.Name(id=node.name, ctx=ast.Load()), args=args, keywords=[]

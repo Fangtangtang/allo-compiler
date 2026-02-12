@@ -66,6 +66,8 @@ class IRBuilder(ast.NodeVisitor):
         self.module: Module = None
 
         self.current_func: func_d.FuncOp = None  # the function under construction
+        self.reserved_bindings = {}
+
         self.ip_stack = []  # module insert pointes
         self.handler_cache = {}
 
@@ -110,6 +112,8 @@ class IRBuilder(ast.NodeVisitor):
         self.scopes[-1].vars[name] = val
 
     def get_symbol(self, name, allow_missing=False):
+        if name in self.reserved_bindings:
+            return self.reserved_bindings[name]
         for scope in reversed(self.scopes):
             if name in scope.vars:
                 return scope.vars[name]
@@ -205,21 +209,18 @@ class IRBuilder(ast.NodeVisitor):
         return buf_d.to_buffer(result, tensor, ip=self.get_ip())
 
     def visit_Name(self, node: ast.Name):
-        var = self.get_symbol(node.id)
-        if isinstance(node.ctx, ast.Load):
-            var = self.get_op_result(var)
-            if (
-                isinstance(getattr(var, "type", None), MemRefType)
-                and len(var.type.shape) == 0
-            ):
-                # load scalar from memref
-                affine_map = AffineMap.get_identity(0)
-                affine_attr = AffineMapAttr.get(affine_map)
-                var = affine_d.AffineLoadOp(
-                    var.type.element_type, var, [], affine_attr, ip=self.get_ip()
-                )
-            return var
-        raise NotImplementedError
+        var = self.get_op_result(self.get_symbol(node.id))
+        if (
+            isinstance(getattr(var, "type", None), MemRefType)
+            and len(var.type.shape) == 0
+        ):
+            # load scalar from memref
+            affine_map = AffineMap.get_identity(0)
+            affine_attr = AffineMapAttr.get(affine_map)
+            var = affine_d.AffineLoadOp(
+                var.type.element_type, var, [], affine_attr, ip=self.get_ip()
+            )
+        return var
 
     def visit_Constant(self, node: ast.Constant):
         if type(node.value) is int:
@@ -402,8 +403,21 @@ class IRBuilder(ast.NodeVisitor):
         return result
 
     def visit_Assign(self, node: ast.Assign):
-        # [NOTE]: only used for special case (call a function with multiple returns)
-        assert len(node.targets) == 1 and isinstance(node.value, ast.Call)
+        # [NOTE]: only used for special case
+        assert isinstance(node.value, ast.Call)
+        # - some special builtin: get_wid
+        if (
+            isinstance(node.value.func, ast.Attribute)
+            and isinstance(node.value.func.value, ast.Name)
+            and node.value.func.value.id == "__allo__"
+        ):
+            name = node.value.func.attr
+            assert name in BUILTIN_HANDLERS
+            handler = self.get_builtin_handler(name)
+            handler.build(node.value, node.targets)
+            return
+        # - call a function with multiple returns
+        assert len(node.targets) == 1
         call_op = self.visit(node.value)
         assert self.get_symbol(name=node.targets[0].id, allow_missing=True) is None
         self.put_var(node.targets[0].id, val=MockCallResultTuple(call_op.results))
@@ -602,7 +616,8 @@ class IRBuilder(ast.NodeVisitor):
         with self.get_global_ip():
             axis = [sdy_d.MeshAxisAttr.get(f"{i}", dim) for i, dim in enumerate(grid)]
             mesh = sdy_d.mesh(
-                sym_name=f"{callee_name}_mesh", mesh=sdy_d.MeshAttr.get(axis)
+                sym_name=self.symbol_table.mangle_grid_name(callee_name),
+                mesh=sdy_d.MeshAttr.get(axis),
             )
         results = [
             RankedTensorType.get(o.type.shape, o.type.element_type) for o in outputs
@@ -697,6 +712,7 @@ class IRBuilder(ast.NodeVisitor):
         func_op = func_d.FuncOp(name=node.name, type=func_type, ip=self.get_ip())
         func_op.add_entry_block()
         self.current_func = func_op
+        self.reserved_bindings.clear()
         with self.block_scope_guard():
             # function arguments
             for i, (ast_arg, arg) in enumerate(zip(node.args.args, func_op.arguments)):

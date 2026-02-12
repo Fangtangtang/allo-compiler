@@ -6,3 +6,4 @@ from .handler import (
 )
 from .value import *
 from .arith import *
+from .spmw import *

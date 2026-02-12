@@ -60,6 +60,9 @@ class SymbolTable:
     def mangle_with_namespace(self, name: str, namespace: str) -> str:
         return f"__{namespace}__{name}"
 
+    def mangle_grid_name(self, work_name) -> str:
+        return f"{work_name}_mesh"
+
     @staticmethod
     def get_hash(arr):
         assert isinstance(arr, np.ndarray), "only support np.ndarray"

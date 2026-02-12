@@ -1,8 +1,8 @@
 # Copyright Allo authors. All Rights Reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-from src.main import process_spmw, process
-from allo.ir.types import int32, Int
+from src.main import process_spmw
+from allo.ir.types import int32
 from allo import spmw
 from allo.memory import Layout
 

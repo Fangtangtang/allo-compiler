@@ -184,9 +184,9 @@ class IRBuilder(ast.NodeVisitor):
             return dtype, is_unsign
         return MemRefType.get(shape, dtype), is_unsign
 
-    def build_work_arg_type(self, annotation: ast.Subscript, is_tensor: bool = True):
+    def build_work_arg_type(self, annotation: ast.Subscript, as_tensor: bool = True):
         dtype, shape, spec, is_unsign = self.parse_type_ann(annotation)
-        if is_tensor:
+        if as_tensor:
             return RankedTensorType.get(shape, dtype), spec, is_unsign
         return MemRefType.get(shape, dtype), spec, is_unsign
 
@@ -560,6 +560,31 @@ class IRBuilder(ast.NodeVisitor):
     def visit_With(self, node: ast.With):
         raise NotImplementedError
 
+    def visit_work_interface(self, mesh_name, arg_list, as_tensor):
+        types, shards = [], []
+        for in_arg in arg_list:
+            t_type, spec, is_unsign = self.build_work_arg_type(
+                in_arg.annotation, as_tensor
+            )  # TODO:unsigned
+            types.append(t_type)
+            shards.append(
+                sdy_d.TensorShardingAttr.get(
+                    mesh_name,
+                    [
+                        sdy_d.DimensionShardingAttr.get(
+                            axes=(
+                                [sdy_d.AxisRefAttr.get(name=f"{p.axis}")]
+                                if isinstance(p, Layout.Shard)
+                                else []
+                            ),
+                            is_closed=True,
+                        )
+                        for p in spec.partitions
+                    ],
+                )
+            )
+        return types, shards
+
     def visit_work(self, callee: ast.FunctionDef):
         callee_name = callee.name
         grid, inputs, outputs = None, None, None
@@ -582,48 +607,12 @@ class IRBuilder(ast.NodeVisitor):
         results = [
             RankedTensorType.get(o.type.shape, o.type.element_type) for o in outputs
         ]
-        in_shard, out_shard, local_types, output_types = [], [], [], []
-        for in_arg in callee.args.args[: len(inputs)]:
-            t_type, spec, is_unsign = self.build_work_arg_type(in_arg.annotation)
-            local_types.append(t_type)
-            in_shard.append(
-                sdy_d.TensorShardingAttr.get(
-                    mesh.sym_name.value,
-                    [
-                        sdy_d.DimensionShardingAttr.get(
-                            axes=(
-                                [sdy_d.AxisRefAttr.get(name=f"{p.axis}")]
-                                if isinstance(p, Layout.Shard)
-                                else []
-                            ),
-                            is_closed=True,
-                        )
-                        for p in spec.partitions
-                    ],
-                )
-            )
-        for out_arg in callee.args.args[len(inputs) :]:
-            t_type, spec, is_unsign = self.build_work_arg_type(
-                out_arg.annotation, False
-            )
-            output_types.append(t_type)
-            out_shard.append(
-                sdy_d.TensorShardingAttr.get(
-                    mesh.sym_name.value,
-                    [
-                        sdy_d.DimensionShardingAttr.get(
-                            axes=(
-                                [sdy_d.AxisRefAttr.get(name=f"{p.axis}")]
-                                if isinstance(p, Layout.Shard)
-                                else []
-                            ),
-                            is_closed=True,
-                        )
-                        for p in spec.partitions
-                    ],
-                )
-            )
-        # FIXME: tentative
+        local_types, in_shard = self.visit_work_interface(
+            mesh.sym_name.value, callee.args.args[: len(inputs)], True
+        )
+        output_types, out_shard = self.visit_work_interface(
+            mesh.sym_name.value, callee.args.args[len(inputs) :], False
+        )
         comp_op = sdy_d.ManualComputationOp(
             results,
             inputs,
@@ -634,7 +623,7 @@ class IRBuilder(ast.NodeVisitor):
             ),
             ip=self.get_ip(),
         )
-        block = comp_op.body.blocks.append(*local_types)  # FIXME: local size
+        block = comp_op.body.blocks.append(*local_types)
         self.set_ip(block)
         # convert inputs to buffer
         args = [self.to_buffer(input_) for input_ in block.arguments]

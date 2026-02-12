@@ -209,18 +209,20 @@ class IRBuilder(ast.NodeVisitor):
         return buf_d.to_buffer(result, tensor, ip=self.get_ip())
 
     def visit_Name(self, node: ast.Name):
-        var = self.get_op_result(self.get_symbol(node.id))
-        if (
-            isinstance(getattr(var, "type", None), MemRefType)
-            and len(var.type.shape) == 0
-        ):
-            # load scalar from memref
-            affine_map = AffineMap.get_identity(0)
-            affine_attr = AffineMapAttr.get(affine_map)
-            var = affine_d.AffineLoadOp(
-                var.type.element_type, var, [], affine_attr, ip=self.get_ip()
-            )
-        return var
+        if isinstance(node.ctx, ast.Load):
+            var = self.get_op_result(self.get_symbol(node.id))
+            if (
+                isinstance(getattr(var, "type", None), MemRefType)
+                and len(var.type.shape) == 0
+            ):
+                # load scalar from memref
+                affine_map = AffineMap.get_identity(0)
+                affine_attr = AffineMapAttr.get(affine_map)
+                var = affine_d.AffineLoadOp(
+                    var.type.element_type, var, [], affine_attr, ip=self.get_ip()
+                )
+            return var
+        raise RuntimeError("unreachable")
 
     def visit_Constant(self, node: ast.Constant):
         if type(node.value) is int:

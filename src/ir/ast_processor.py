@@ -82,7 +82,7 @@ class ASTProcessor(ast.NodeTransformer):
 
         self.current_func: str = None
         self.symbols = global_symbols
-        self.work_constexpr = {}  # per work instance's constexprs
+        self.work_meta = {}  # per work instance's meta data
         # keep track of metaprogramming conditions, allow nesting
         self.meta_cond: list[bool] = []
 
@@ -490,6 +490,8 @@ class ASTProcessor(ast.NodeTransformer):
         if var is not None:
             if isinstance(var, ast.Constant):
                 return var
+            if isinstance(var, ast.Name):
+                node.id = var.id  # redirect symbol
             node.dtype, node.shape = var.dtype, var.shape
             return node
         # compile time constant
@@ -1139,8 +1141,8 @@ class ASTProcessor(ast.NodeTransformer):
             module = self.resolve_node(node.func)
             if module and module.__module__.startswith("allo.spmw"):
                 attr = module.__name__
-                assert attr in self.work_constexpr, f"{attr} must be in work."
-                values = self.work_constexpr[attr]
+                assert attr in self.work_meta, f"{attr} must be in work."
+                values = self.work_meta[attr]
                 return values  # list of symbols
         # TODO
         return node
@@ -1297,7 +1299,7 @@ class ASTProcessor(ast.NodeTransformer):
                 # arguments
                 for arg in node.args.args:
                     self.put_var(name=arg.arg, val=arg)
-                # internally insert `get_wid` as the first statement
+                # internally insert `get_wid` as the first statement (meta data setup)
                 targets = []
                 attr = "get_wid"
                 for i in range(len(grid)):
@@ -1305,7 +1307,7 @@ class ASTProcessor(ast.NodeTransformer):
                     target.dtype, target.shape = Index(), tuple()
                     target.dtype.constexpr = True  # immutable
                     targets.append(target)
-                self.work_constexpr[attr] = targets
+                self.work_meta[attr] = targets
                 op = ast.Assign(
                     targets=targets,
                     value=ast.Call(
@@ -1323,7 +1325,7 @@ class ASTProcessor(ast.NodeTransformer):
                 new_body.extend(self.visit_body(node.body))
                 new_body.append(ast.Return())
                 node.body = new_body
-                self.work_constexpr.clear()
+                self.work_meta.clear()
         call_node = ast.Expr(
             value=ast.Call(
                 func=ast.Name(id=node.name, ctx=ast.Load()), args=args, keywords=[]

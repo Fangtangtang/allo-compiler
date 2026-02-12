@@ -412,6 +412,7 @@ class ASTProcessor(ast.NodeTransformer):
     def visit_cast(
         self, node: ast.AST, target_dtype: AlloType, skip_const: bool = False
     ) -> ast.AST:
+        assert isinstance(node, ast.expr), "Invalid casting."
         if isinstance(node, ast.Constant):
             if skip_const:  # special case for some const index (e.g., loop args)
                 return node
@@ -730,6 +731,13 @@ class ASTProcessor(ast.NodeTransformer):
             return new_node
         return self.visit_binary_op_operands(left, right, node.ops[0])
 
+    def visit_assign_symbol(self, targets: list[ast.Name], symbols: list[ast.Name]):
+        assert len(targets) == len(symbols), "Invalid assignment, number mismatch"
+        for target, symbol in zip(targets, symbols):
+            target_ = self.get_symbol(target.id, allow_missing=True)
+            assert target_ is None, "symbol should be constexpr, cannot be reassigned."
+            self.put_var(target.id, val=symbol)
+
     def visit_Assign(self, node: ast.Assign):
         # e.g., A[i] = 1
         #       v = 1
@@ -741,12 +749,13 @@ class ASTProcessor(ast.NodeTransformer):
             else [node.targets[0]]
         )
         node_list = []
-        if isinstance(node.value, ast.Call) and len(targets) > 1:
-            # function call with multiple returns
+        if isinstance(node.value, ast.Call):
             callee = self.visit(node.value)
-            if isinstance(callee, list):
-                values = callee
-            else:
+            if isinstance(callee, list):  # list of symbols
+                self.visit_assign_symbol(targets, callee)
+                return None
+            if len(targets) > 1:
+                # function call with multiple returns
                 result_name = f"_res_{id(callee)}"  # unique name
                 call_node = ast.Assign(
                     targets=[ast.Name(id=result_name, ctx=ast.Store())], value=callee
@@ -761,6 +770,8 @@ class ASTProcessor(ast.NodeTransformer):
                     )
                     value.dtype, value.shape = dtype, shape  # TODO: spec
                     values.append(value)
+            else:
+                values = [callee]
         else:
             values = (
                 node.value.elts if isinstance(node.value, ast.Tuple) else [node.value]
@@ -823,17 +834,22 @@ class ASTProcessor(ast.NodeTransformer):
             assert not getattr(
                 target_.dtype, "constexpr", False
             ), "Cannot reassign constants."
-        if getattr(dtype, "constexpr", False):
-            # TODO: scalar only?
-            node.value = ast.Constant(self.eval_constant(node.value))
-            self.put_const(node.target.id, node.value)
-            node.value.dtype, node.value.shape = dtype, shape
-            # FIXME: can we delete const expr here?
+        if getattr(dtype, "constexpr", False):  # TODO: scalar only?
+            try:
+                node.value = ast.Constant(self.eval_constant(node.value))
+                self.put_const(node.target.id, node.value)
+                node.value.dtype, node.value.shape = dtype, shape
+            except:
+                value = self.visit(node.value)
+                if isinstance(value, list):  # is symbol
+                    assert isinstance(dtype, Index)
+                    self.visit_assign_symbol([node.target], value)
+                else:
+                    raise RuntimeError("unreachable")
             return None
         else:
             if node.value is not None:
-                value = self.visit(node.value)
-                value = self.visit_cast(value, dtype)
+                value = self.visit_cast(self.visit(node.value), dtype)
                 node.value = self.visit_broadcast(value, dtype, shape)
             self.put_var(node.target.id, node.target)
         node.target.dtype = node.dtype = dtype
@@ -1125,7 +1141,7 @@ class ASTProcessor(ast.NodeTransformer):
                 attr = module.__name__
                 assert attr in self.work_constexpr, f"{attr} must be in work."
                 values = self.work_constexpr[attr]
-                return values if len(values) > 1 else values[0]
+                return values  # list of symbols
         # TODO
         return node
 

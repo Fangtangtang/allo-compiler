@@ -167,7 +167,7 @@ class IRBuilder(ast.NodeVisitor):
         allo_type = self.symbol_table.types[dtype.id]
         shape = [int(size.value) for size in shape.elts]
         spec = None if spec.id == "None" else self.symbol_table.types[spec.id]
-        return allo_type.build(), shape, spec, dtype.id.startswith("u")
+        return allo_type, shape, spec, dtype.id.startswith("u")
 
     def build_type(self, annotation: ast.Subscript, force_memref: bool = False):
         """
@@ -182,14 +182,14 @@ class IRBuilder(ast.NodeVisitor):
         """
         dtype, shape, _, is_unsign = self.parse_type_ann(annotation)
         if len(shape) == 0 and not force_memref:
-            return dtype, is_unsign
-        return MemRefType.get(shape, dtype), is_unsign
+            return dtype.build(), is_unsign
+        return MemRefType.get(shape, dtype.build()), is_unsign
 
     def build_work_arg_type(self, annotation: ast.Subscript, as_tensor: bool = True):
         dtype, shape, spec, is_unsign = self.parse_type_ann(annotation)
         if as_tensor:
-            return RankedTensorType.get(shape, dtype), spec, is_unsign
-        return MemRefType.get(shape, dtype), spec, is_unsign
+            return RankedTensorType.get(shape, dtype.build()), spec, is_unsign
+        return MemRefType.get(shape, dtype.build()), spec, is_unsign
 
     def build_buffer(self, memref_type: MemRefType, is_unsigned: bool):
         buffer = memref_d.AllocOp(memref_type, [], [], ip=self.get_ip())

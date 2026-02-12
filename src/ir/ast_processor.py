@@ -240,14 +240,15 @@ class ASTProcessor(ast.NodeTransformer):
             assert len(base_shape) == 0
             if base_type is Stream:
                 # e.g., Stream[Ty, 4]
-                assert (
-                    isinstance(annotation.slice, ast.Tuple)
-                    and len(annotation.slice.elts) == 2
-                ), "Only support `ele_type` and `depth` for now"
-                ele_type, ele_shape, _ = self.visit_type_annotation(
-                    annotation.slice.elts[0]
-                )
-                depth = self.eval_constant(annotation.slice.elts[1])
+                ty, depth = None, None
+                if isinstance(annotation.slice, ast.Tuple):
+                    assert len(annotation.slice.elts) == 2
+                    ty, depth = annotation.slice.elts[0], annotation.slice.elts[1]
+                else:
+                    ty = annotation.slice
+                    depth = ast.Constant(value=2)  # default depth
+                ele_type, ele_shape, _ = self.visit_type_annotation(ty)
+                depth = self.eval_constant(depth)
                 return (
                     Stream(dtype=ele_type, shape=ele_shape, depth=depth),
                     tuple(),
@@ -825,6 +826,27 @@ class ASTProcessor(ast.NodeTransformer):
             node.target, ast.Name
         ), "target of AnnAssign must be Name, other type not supported."
         target_ = self.get_symbol(node.target.id, allow_missing=True)
+        if isinstance(dtype, Stream):
+            assert node.value is None, "Invalid stream declaration."
+            assert self.current_namespace is not None, "stream must be defined in unit"
+            assert self.current_func is None, spec is None
+            # replace with a special call
+            stream_name = self.symbol_table.mangle_with_namespace(
+                node.target.id, self.current_namespace
+            )
+            stream = ast.Name(id=stream_name, ctx=ast.Store())
+            call_op = ast.Call(
+                func=ast.Attribute(
+                    value=ast.Name(id="__allo__", ctx=ast.Load()),
+                    attr="constrcut_stream",
+                    ctx=ast.Load(),
+                ),
+                args=[stream, self.get_ast_annotaiton(dtype, shape, None)],
+                keywords=[],
+            )
+            stream.dtype, stream.shape = dtype, shape
+            self.put_var(node.target.id, val=stream)
+            return ast.Expr(value=call_op)
         if target_ is not None:
             assert (
                 node.value is not None
@@ -1095,6 +1117,19 @@ class ASTProcessor(ast.NodeTransformer):
         orig_node.func = ast.Name(id=callee_name, ctx=ast.Load())
         return orig_node
 
+    def visit_stream_method_call(self, node: ast.Call, stream: ast.expr):
+        attr = node.func._attr
+        if attr == "put":
+            assert len(node.args) == 1, "invalid stream put"
+            # arg type checking
+            # TODO
+            raise NotImplementedError
+        if attr == "get":
+            assert len(node.args) == 0, "invalid stream get"
+            # TODO
+            raise NotImplementedError
+        raise NotImplementedError
+
     def visit_Call(self, node: ast.Call):
         if isinstance(node.func, ast.Name):
             # FIXME: tentative!!!
@@ -1144,6 +1179,13 @@ class ASTProcessor(ast.NodeTransformer):
                 assert attr in self.work_meta, f"{attr} must be in work."
                 values = self.work_meta[attr]
                 return values  # list of symbols
+            try:
+                var = self.visit(node.func.value)
+                # stream's methods
+                if isinstance(var.dtype, Stream) and len(var.shape) == 0:
+                    return self.visit_stream_method_call(node, var)
+            except:
+                pass
         # TODO
         return node
 
@@ -1246,7 +1288,7 @@ class ASTProcessor(ast.NodeTransformer):
         node._type = FunctionType.WORK
         with self.block_scope_guard():  # to support args shadowing
             # keywords
-            args, grid = [], []
+            inputs, outputs, grid = None, None, []
             for kw in node.decorator_list[0].keywords:
                 assert isinstance(kw.value, ast.List)
                 if kw.arg == "mapping":
@@ -1266,11 +1308,22 @@ class ASTProcessor(ast.NodeTransformer):
                             arg.id, ErrorValue(arg.id, "shadowed by work's arg list")
                         )
                     if kw.arg == "inputs":
-                        args = kw.value.elts + args
+                        inputs = kw.value.elts
                     else:
-                        args += kw.value.elts
+                        outputs = kw.value.elts
                 else:
                     raise RuntimeError("Invalid work declaration")
+            if inputs is None:
+                inputs = []
+                node.decorator_list[0].keywords.append(
+                    ast.keyword("inputs", ast.List(inputs))
+                )
+            if outputs is None:
+                outputs = []
+                node.decorator_list[0].keywords.append(
+                    ast.keyword("outputs", ast.List(outputs))
+                )
+            args = inputs + outputs
             node, _ = self.visit_function_signature(node, instantiate=instantiate)
             assert (
                 node.returns is None
@@ -1326,12 +1379,10 @@ class ASTProcessor(ast.NodeTransformer):
                 new_body.append(ast.Return())
                 node.body = new_body
                 self.work_meta.clear()
-        call_node = ast.Expr(
-            value=ast.Call(
-                func=ast.Name(id=node.name, ctx=ast.Load()), args=args, keywords=[]
-            )
+        call_node = ast.Call(
+            func=ast.Name(id=node.name, ctx=ast.Load()), args=args, keywords=[]
         )
-        return call_node
+        return ast.Expr(value=call_node)
 
     # ----- invalid syntax -----
     def visit_Break(self, node: ast.Break):

@@ -232,7 +232,7 @@ class IRBuilder(ast.NodeVisitor):
             )
         raise NotImplementedError
 
-    def get_affine_expr(self, node: ast.expr, ivs: list):
+    def get_affine_expr(self, node: ast.expr, ivs: list, symbols: list):
         """
         Parse an expression into an affine expression.
 
@@ -241,6 +241,10 @@ class IRBuilder(ast.NodeVisitor):
         if isinstance(node, ast.Constant):
             return AffineConstantExpr.get(node.value)
         if isinstance(node, ast.Name):
+            if node.id in self.reserved_bindings:
+                var = self.reserved_bindings[node.id]
+                symbols.append(var)
+                return AffineExpr.get_symbol(len(symbols) - 1)
             var = self.get_symbol(node.id)
             if isinstance(var, MockArg) and var.is_affine:
                 ivs.append(var.result)
@@ -253,16 +257,20 @@ class IRBuilder(ast.NodeVisitor):
                 if node.func.value.id == "__allo__":
                     handler = self.get_builtin_handler(node.func.attr)
                     if handler:
-                        return handler.get_affine_expr(node, ivs)
+                        return handler.get_affine_expr(node, ivs, symbols)
         # TODO: other cases
         return None
 
     def get_affine_attr(self, node: ast.expr):
-        ivs = []
-        expr = self.get_affine_expr(node, ivs)
+        ivs, symbols = [], []
+        expr = self.get_affine_expr(node, ivs, symbols)
         if expr is None:
             return None, None
-        return AffineMap.get(dim_count=len(ivs), symbol_count=0, exprs=[expr]), ivs
+        assert len(symbols) == 0, "To be implemented."
+        return (
+            AffineMap.get(dim_count=len(ivs), symbol_count=len(symbols), exprs=[expr]),
+            ivs,
+        )
 
     def visit_Subscript(self, node: ast.Subscript, val=None):
         base = self.get_op_result(self.visit(node.value))
@@ -273,11 +281,11 @@ class IRBuilder(ast.NodeVisitor):
         layout = base.type.layout
         elts = node.slice.elts if isinstance(node.slice, ast.Tuple) else [node.slice]
         offsets, sizes, strides = [], [], []
-        indices, ivs = [], []
+        indices, ivs, symbols = [], [], []
         # try to parse elts to affine expressions (https://mlir.llvm.org/docs/Dialects/Affine/#affine-expressions)
         use_affine = True
         for elt in elts:
-            aff = self.get_affine_expr(elt, ivs)
+            aff = self.get_affine_expr(elt, ivs, symbols)
             if aff is not None:
                 indices.append(aff)
                 if isinstance(elt, ast.Constant):  # constant value
@@ -301,14 +309,14 @@ class IRBuilder(ast.NodeVisitor):
         if len(indices) == len(shape):  # access element
             if use_affine:  # affine operations
                 affine_map = AffineMap.get(
-                    dim_count=len(ivs), symbol_count=0, exprs=indices
+                    dim_count=len(ivs), symbol_count=len(symbols), exprs=indices
                 )
                 affine_attr = AffineMapAttr.get(affine_map)
                 if isinstance(node.ctx, ast.Load):
                     op = affine_d.AffineLoadOp(
                         base.type.element_type,
                         base,
-                        ivs,
+                        ivs + symbols,
                         affine_attr,
                         ip=self.get_ip(),
                     )
@@ -317,7 +325,7 @@ class IRBuilder(ast.NodeVisitor):
                     op = affine_d.AffineStoreOp(
                         val,
                         base,
-                        ivs,
+                        ivs + symbols,
                         affine_attr,
                         ip=self.get_ip(),
                     )

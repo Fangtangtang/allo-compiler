@@ -76,6 +76,24 @@ def test_stream_array():
 
     s = process_spmw(top)
 
+    @spmw.unit()
+    def top2(A: int32[16, 16], B: int32[16, 16]):
+        pipe: Stream[int32][16, 16]
+
+        @spmw.work(mapping=[1], inputs=[A])
+        def producer(local_A: int32[16, 16]):
+            pi = spmw.get_wid()
+            for i, j in allo.grid(16, 16):
+                pipe[i + pi, j].put(local_A[i, j])
+
+        @spmw.work(mapping=[1], outputs=[B])
+        def consumer(local_B: int32[16, 16]):
+            pi = spmw.get_wid()
+            for i, j in allo.grid(16, 16):
+                local_B[i, j] = pipe[i + pi, j].get()
+
+    s = process_spmw(top2)
+
 
 if __name__ == "__main__":
     test_scalar_stream()

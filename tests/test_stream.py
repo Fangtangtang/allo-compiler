@@ -59,6 +59,25 @@ def test_tensor_stream():
     s = process_spmw(top)
 
 
+def test_stream_array():
+    @spmw.unit()
+    def top(A: int32[16, 16], B: int32[16, 16]):
+        pipe: Stream[int32[4, 16]][4]
+
+        @spmw.work(mapping=[4], inputs=[A])
+        def producer(local_A: int32[16, 16] @ [S(0), R]):
+            pi = spmw.get_wid()
+            pipe[pi].put(local_A)
+
+        @spmw.work(mapping=[4], outputs=[B])
+        def consumer(local_B: int32[16, 16] @ [S(0), R]):
+            pi = spmw.get_wid()
+            local_B[:, :] = pipe[pi].get()
+
+    s = process_spmw(top)
+
+
 if __name__ == "__main__":
     test_scalar_stream()
     test_tensor_stream()
+    test_stream_array()

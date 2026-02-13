@@ -23,7 +23,7 @@ def build(fn: Union[Callable, str], instantiate: list = None):
         print(ast.unparse(node), "\n")
     print()
     builder = IRBuilder(symbol_table)
-    module = builder.build(node)
+    module = builder.build()
     return module, top_name
 
 

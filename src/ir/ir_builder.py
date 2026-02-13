@@ -143,7 +143,7 @@ class IRBuilder(ast.NodeVisitor):
         assert isinstance(val, Value), f"Fail to resolve op result: {val}"
         return val
 
-    def build(self, ast_module: ast.FunctionDef):
+    def build(self):
         with self.ctx, Location.unknown():
             self.module = Module.create()
             self.set_ip(self.module.body)

@@ -1118,16 +1118,52 @@ class ASTProcessor(ast.NodeTransformer):
         return orig_node
 
     def visit_stream_method_call(self, node: ast.Call, stream: ast.expr):
-        attr = node.func._attr
+        attr = node.func.attr
+        if isinstance(stream, ast.Name):
+            name, indices = stream, []
+        elif isinstance(stream, ast.Subscript):
+            assert isinstance(stream.value, ast.Name)
+            name = stream.value
+            indices = (
+                stream.slice.elts
+                if isinstance(stream.slice, ast.Tuple)
+                else [stream.slice]
+            )
+        else:
+            raise RuntimeError("unreachable")
         if attr == "put":
             assert len(node.args) == 1, "invalid stream put"
             # arg type checking
-            # TODO
-            raise NotImplementedError
+            arg = self.visit_cast(self.visit(node.args[0]), stream.dtype.dtype)
+            arg = self.visit_broadcast(arg, arg.dtype, stream.dtype.shape)
+            return ast.Call(
+                func=ast.Attribute(
+                    value=ast.Name(id="__allo__", ctx=ast.Load()),
+                    attr=attr,
+                    ctx=ast.Load(),
+                ),
+                args=[name, ast.Tuple(elts=indices, ctx=ast.Load()), arg],
+                keywords=[],
+            )
         if attr == "get":
             assert len(node.args) == 0, "invalid stream get"
-            # TODO
-            raise NotImplementedError
+            call_op = ast.Call(
+                func=ast.Attribute(
+                    value=ast.Name(id="__allo__", ctx=ast.Load()),
+                    attr=attr,
+                    ctx=ast.Load(),
+                ),
+                args=[
+                    name,
+                    ast.Tuple(elts=indices, ctx=ast.Load()),
+                    self.get_ast_annotaiton(
+                        stream.dtype.dtype, stream.dtype.shape, None
+                    ),
+                ],
+                keywords=[],
+            )
+            call_op.dtype, call_op.shape = stream.dtype.dtype, stream.dtype.shape
+            return call_op
         raise NotImplementedError
 
     def visit_Call(self, node: ast.Call):
@@ -1346,7 +1382,9 @@ class ASTProcessor(ast.NodeTransformer):
                 ), f"Invalid type refinement: {callee_arg.spec}"
                 # update argument shape with local shape
                 self.reset_type(
-                    callee_arg, shape=spec.shard(callee_arg.shape, grid), spec=spec
+                    callee_arg,
+                    shape=tuple(spec.shard(callee_arg.shape, grid)),
+                    spec=spec,
                 )
             with self.function_scope(node):
                 # arguments

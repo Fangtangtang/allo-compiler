@@ -113,10 +113,12 @@ def parse(fn: Union[Callable, str], instantiate: list = None):
                         break
                     break
 
-    print(mod)
+    with open("unrolled_module.mlir", "w") as f:
+        f.write(str(mod))
 
     pipeline = "builtin.module(canonicalize)"
     with context:
         mlir_pass_manager.parse(pipeline).run(mod.operation)
 
-    print(mod)
+    with open("simplified_module.mlir", "w") as f:
+        f.write(str(mod))

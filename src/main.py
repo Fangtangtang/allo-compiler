@@ -8,6 +8,7 @@ from .ir.utils import SymbolTable, get_global_vars
 from .ir.ast_processor import ASTProcessor
 from .ir.ir_builder import IRBuilder
 from allo.backend.llvm import LLVMModule
+from allo.backend.simulator import LLVMOMPModule
 
 
 def build(fn: Union[Callable, str], instantiate: list = None):
@@ -42,3 +43,9 @@ def process_spmw(fn: Union[Callable, str], instantiate: list = None):
     """
     module, top_name = build(fn, instantiate)
     print(module)
+
+def simulate(fn: Union[Callable, str], instantiate: list = None):
+    """
+    Simulate SPMW program using Allo's simulator
+    """
+    module, top_name = build(fn, instantiate)

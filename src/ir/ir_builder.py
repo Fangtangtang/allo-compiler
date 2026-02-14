@@ -621,10 +621,10 @@ class IRBuilder(ast.NodeVisitor):
                 outputs = [self.get_op_result(self.visit(e)) for e in kw.value.elts]
         # create work grid in global scope
         with self.get_global_ip():
-            axis = [sdy_d.MeshAxisAttr.get(f"{i}", dim) for i, dim in enumerate(grid)]
+            axes = [sdy_d.MeshAxisAttr.get(f"{i}", dim) for i, dim in enumerate(grid)]
             mesh = sdy_d.mesh(
                 sym_name=self.symbol_table.mangle_grid_name(callee_name),
-                mesh=sdy_d.MeshAttr.get(axis),
+                mesh=sdy_d.MeshAttr.get(axes),
             )
         results = [
             RankedTensorType.get(o.type.shape, o.type.element_type) for o in outputs

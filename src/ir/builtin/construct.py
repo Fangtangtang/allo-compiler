@@ -6,7 +6,7 @@ from .handler import BuiltinHandler, register_builtin_handler
 from allo._mlir.dialects import (
     allo as allo_d,
 )
-from allo._mlir.ir import AffineMap, AffineMapAttr
+from allo._mlir.ir import AffineMap, AffineMapAttr, UnitAttr
 
 
 @register_builtin_handler("constrcut_stream")
@@ -17,9 +17,12 @@ class StreamHandler(BuiltinHandler):
         name = node.args[0].id
         dtype, shape, _, is_unsign = self.builder.parse_type_ann(node.args[1])
         stream_type = allo_d.StreamType.get(dtype.build(), depth=dtype.depth)
-        return allo_d.stream_global(
+        op = allo_d.stream_global(
             name, stream_type, shape, ip=self.builder.get_global_ip()
-        )  # FIXME: unsigned
+        )
+        if is_unsign:
+            op.attributes["unsigned"] = UnitAttr.get()
+        return op
 
 
 @register_builtin_handler("put")
@@ -62,11 +65,14 @@ class StreamGetHandler(BuiltinHandler):
         affine_map = AffineMap.get(
             dim_count=len(ivs), symbol_count=len(symbols), exprs=indices
         )
-        result, is_unsign = self.builder.build_type(node.args[2])  # FIXME: unsigned
-        return allo_d.get_stream_global(
+        result, is_unsign = self.builder.build_type(node.args[2])
+        op = allo_d.get_stream_global(
             result,
             name,
             ivs + symbols,
             AffineMapAttr.get(affine_map),
             ip=self.builder.get_ip(),
         )
+        if is_unsign:
+            op.attributes["unsigned"] = UnitAttr.get()
+        return op

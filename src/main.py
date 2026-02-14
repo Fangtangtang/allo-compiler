@@ -44,6 +44,7 @@ def process_spmw(fn: Union[Callable, str], instantiate: list = None):
     module, top_name = build(fn, instantiate)
     print(module)
 
+
 def simulate(fn: Union[Callable, str], instantiate: list = None):
     """
     Simulate SPMW program using Allo's simulator

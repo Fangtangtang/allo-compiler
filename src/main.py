@@ -4,6 +4,7 @@
 import ast
 from typing import Union
 from collections.abc import Callable
+from .ir.config import ir_builder_config_context
 from .ir.utils import SymbolTable, get_global_vars
 from .ir.ast_processor import ASTProcessor
 from .ir.ir_builder import IRBuilder
@@ -12,20 +13,21 @@ from allo.backend.simulator import LLVMOMPModule
 
 
 def build(fn: Union[Callable, str], instantiate: list = None):
-    symbol_table = SymbolTable()
-    ast_processor = ASTProcessor(symbol_table, global_symbols=get_global_vars(fn))
-    # process the top function
-    node, top_name = ast_processor.process(fn, instantiate=instantiate)
-    for name, constant in symbol_table.constants.items():
-        print(name, "=", constant.value)
-    for op in symbol_table.global_ops:
-        print(ast.unparse(op))
-    for node in symbol_table.functions.values():
-        print(ast.unparse(node), "\n")
-    print()
-    builder = IRBuilder(symbol_table)
-    module = builder.build()
-    return module, top_name
+    with ir_builder_config_context("hls"):
+        symbol_table = SymbolTable()
+        ast_processor = ASTProcessor(symbol_table, global_symbols=get_global_vars(fn))
+        # process the top function
+        node, top_name = ast_processor.process(fn, instantiate=instantiate)
+        for name, constant in symbol_table.constants.items():
+            print(name, "=", constant.value)
+        for op in symbol_table.global_ops:
+            print(ast.unparse(op))
+        for node in symbol_table.functions.values():
+            print(ast.unparse(node), "\n")
+        print()
+        builder = IRBuilder(symbol_table)
+        module = builder.build()
+        return module, top_name
 
 
 def process(fn: Union[Callable, str], instantiate: list = None):

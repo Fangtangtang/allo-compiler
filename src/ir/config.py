@@ -6,6 +6,8 @@ from contextlib import contextmanager
 
 _TYPING_RULE_CONFIG = "default"  # Global configuration for typing rules
 
+def get_typing_rule_config():
+    return _TYPING_RULE_CONFIG
 
 @contextmanager
 def ir_builder_config_context(typing_rule_config: str = None):

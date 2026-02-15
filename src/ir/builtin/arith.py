@@ -4,7 +4,7 @@
 import ast
 import numpy as np
 from .handler import BuiltinHandler, register_builtin_handler, TypingRule
-from ..config import _TYPING_RULE_CONFIG
+from ..config import get_typing_rule_config
 from allo._mlir.dialects import (
     allo as allo_d,
     arith as arith_d,
@@ -191,92 +191,120 @@ DUMMY_BINARY_ARITH_RULE = dummy_binary_arith_rule()
 # =======================================================================
 def add_sub_rule():
     int_rules = {
-        (Int, Int): lambda t1, t2: Int(max(t1.bits, t2.bits) + 1),
-        (Int, UInt): lambda t1, t2: Int(max(t1.bits, t2.bits + 1) + 1),
-        (Int, Index): lambda t1, t2: Int(max(t1.bits, t2.bits + 1) + 1),
-        (Int, Fixed): lambda t1, t2: Fixed(
-            max(t1.bits, t2.bits - t2.fracs) + t2.fracs + 1, t2.fracs
-        ),
-        (Int, UFixed): lambda t1, t2: Fixed(
-            max(t1.bits, t2.bits - t2.fracs + 1) + t2.fracs + 1, t2.fracs
-        ),
-        (Int, Float): lambda t1, t2: t2,
+        (Int, Int): lambda t1, t2: (Int(max(t1.bits, t2.bits) + 1),) * 3,
+        (Int, UInt): lambda t1, t2: (Int(max(t1.bits, t2.bits + 1) + 1),) * 3,
+        (Int, Index): lambda t1, t2: (Int(max(t1.bits, t2.bits + 1) + 1),) * 3,
+        (Int, Fixed): lambda t1, t2: (
+            Fixed(max(t1.bits, t2.bits - t2.fracs) + t2.fracs + 1, t2.fracs),
+        )
+        * 3,
+        (Int, UFixed): lambda t1, t2: (
+            Fixed(max(t1.bits, t2.bits - t2.fracs + 1) + t2.fracs + 1, t2.fracs),
+        )
+        * 3,
+        (Int, Float): lambda t1, t2: (t2,) * 3,
     }
     uint_rules = {
-        (UInt, Int): lambda t1, t2: Int(max(t1.bits + 1, t2.bits) + 1),
-        (UInt, UInt): lambda t1, t2: UInt(max(t1.bits, t2.bits) + 1),
-        (UInt, Index): lambda t1, t2: UInt(max(t1.bits, t2.bits) + 1),
-        (UInt, Fixed): lambda t1, t2: Fixed(
-            max(t1.bits + 1, t2.bits - t2.fracs) + t2.fracs + 1, t2.fracs
-        ),
-        (UInt, UFixed): lambda t1, t2: UFixed(
-            max(t1.bits, t2.bits - t2.fracs) + t2.fracs + 1, t2.fracs
-        ),
-        (UInt, Float): lambda t1, t2: t2,
+        (UInt, Int): lambda t1, t2: (Int(max(t1.bits + 1, t2.bits) + 1),) * 3,
+        (UInt, UInt): lambda t1, t2: (UInt(max(t1.bits, t2.bits) + 1),) * 3,
+        (UInt, Index): lambda t1, t2: (UInt(max(t1.bits, t2.bits) + 1),) * 3,
+        (UInt, Fixed): lambda t1, t2: (
+            Fixed(max(t1.bits + 1, t2.bits - t2.fracs) + t2.fracs + 1, t2.fracs),
+        )
+        * 3,
+        (UInt, UFixed): lambda t1, t2: (
+            UFixed(max(t1.bits, t2.bits - t2.fracs) + t2.fracs + 1, t2.fracs),
+        )
+        * 3,
+        (UInt, Float): lambda t1, t2: (t2,) * 3,
     }
     index_rules = {
-        (Index, Int): lambda t1, t2: Int(max(t1.bits + 1, t2.bits) + 1),
-        (Index, UInt): lambda t1, t2: UInt(max(t1.bits, t2.bits) + 1),
-        (Index, Index): lambda t1, t2: Index(),
-        (Index, Fixed): lambda t1, t2: Fixed(
-            max(t1.bits + 1, t2.bits - t2.fracs) + t2.fracs + 1, t2.fracs
-        ),
-        (Index, UFixed): lambda t1, t2: UFixed(
-            max(t1.bits, t2.bits - t2.fracs) + t2.fracs + 1, t2.fracs
-        ),
-        (Index, Float): lambda t1, t2: t2,
+        (Index, Int): lambda t1, t2: (Int(max(t1.bits + 1, t2.bits) + 1),) * 3,
+        (Index, UInt): lambda t1, t2: (UInt(max(t1.bits, t2.bits) + 1),) * 3,
+        (Index, Index): lambda t1, t2: (Index(),) * 3,
+        (Index, Fixed): lambda t1, t2: (
+            Fixed(max(t1.bits + 1, t2.bits - t2.fracs) + t2.fracs + 1, t2.fracs),
+        )
+        * 3,
+        (Index, UFixed): lambda t1, t2: (
+            UFixed(max(t1.bits, t2.bits - t2.fracs) + t2.fracs + 1, t2.fracs),
+        )
+        * 3,
+        (Index, Float): lambda t1, t2: (t2,) * 3,
     }
     fixed_rules = {
-        (Fixed, Int): lambda t1, t2: Fixed(
-            max(t1.bits - t1.fracs, t2.bits) + t1.fracs + 1, t1.fracs
-        ),
-        (Fixed, UInt): lambda t1, t2: Fixed(
-            max(t1.bits - t1.fracs, t2.bits + 1) + t1.fracs + 1, t1.fracs
-        ),
-        (Fixed, Index): lambda t1, t2: Fixed(
-            max(t1.bits - t1.fracs, t2.bits + 1) + t1.fracs + 1, t1.fracs
-        ),
-        (Fixed, Fixed): lambda t1, t2: Fixed(
-            max(t1.bits - t1.fracs, t2.bits - t2.fracs) + max(t1.fracs, t2.fracs) + 1,
-            max(t1.fracs, t2.fracs),
-        ),
-        (Fixed, UFixed): lambda t1, t2: Fixed(
-            max(t1.bits - t1.fracs, t2.bits - t2.fracs + 1)
-            + max(t1.fracs, t2.fracs)
-            + 1,
-            max(t1.fracs, t2.fracs),
-        ),
-        (Fixed, Float): lambda t1, t2: t2,
+        (Fixed, Int): lambda t1, t2: (
+            Fixed(max(t1.bits - t1.fracs, t2.bits) + t1.fracs + 1, t1.fracs),
+        )
+        * 3,
+        (Fixed, UInt): lambda t1, t2: (
+            Fixed(max(t1.bits - t1.fracs, t2.bits + 1) + t1.fracs + 1, t1.fracs),
+        )
+        * 3,
+        (Fixed, Index): lambda t1, t2: (
+            Fixed(max(t1.bits - t1.fracs, t2.bits + 1) + t1.fracs + 1, t1.fracs),
+        )
+        * 3,
+        (Fixed, Fixed): lambda t1, t2: (
+            Fixed(
+                max(t1.bits - t1.fracs, t2.bits - t2.fracs)
+                + max(t1.fracs, t2.fracs)
+                + 1,
+                max(t1.fracs, t2.fracs),
+            ),
+        )
+        * 3,
+        (Fixed, UFixed): lambda t1, t2: (
+            Fixed(
+                max(t1.bits - t1.fracs, t2.bits - t2.fracs + 1)
+                + max(t1.fracs, t2.fracs)
+                + 1,
+                max(t1.fracs, t2.fracs),
+            ),
+        )
+        * 3,
+        (Fixed, Float): lambda t1, t2: (t2,) * 3,
     }
     ufixed_rules = {
-        (UFixed, Int): lambda t1, t2: Fixed(
-            max(t1.bits - t1.fracs + 1, t2.bits) + t1.fracs + 1, t1.fracs
-        ),
-        (UFixed, UInt): lambda t1, t2: UFixed(
-            max(t1.bits - t1.fracs, t2.bits) + t1.fracs + 1, t1.fracs
-        ),
-        (UFixed, Index): lambda t1, t2: UFixed(
-            max(t1.bits - t1.fracs, t2.bits) + t1.fracs + 1, t1.fracs
-        ),
-        (UFixed, Fixed): lambda t1, t2: Fixed(
-            max(t1.bits - t1.fracs + 1, t2.bits - t2.fracs)
-            + max(t1.fracs, t2.fracs)
-            + 1,
-            max(t1.fracs, t2.fracs),
-        ),
-        (UFixed, UFixed): lambda t1, t2: UFixed(
-            max(t1.bits - t1.fracs, t2.bits - t2.fracs) + max(t1.fracs, t2.fracs) + 1,
-            max(t1.fracs, t2.fracs),
-        ),
-        (UFixed, Float): lambda t1, t2: t2,
+        (UFixed, Int): lambda t1, t2: (
+            Fixed(max(t1.bits - t1.fracs + 1, t2.bits) + t1.fracs + 1, t1.fracs),
+        )
+        * 3,
+        (UFixed, UInt): lambda t1, t2: (
+            UFixed(max(t1.bits - t1.fracs, t2.bits) + t1.fracs + 1, t1.fracs),
+        )
+        * 3,
+        (UFixed, Index): lambda t1, t2: (
+            UFixed(max(t1.bits - t1.fracs, t2.bits) + t1.fracs + 1, t1.fracs),
+        )
+        * 3,
+        (UFixed, Fixed): lambda t1, t2: (
+            Fixed(
+                max(t1.bits - t1.fracs + 1, t2.bits - t2.fracs)
+                + max(t1.fracs, t2.fracs)
+                + 1,
+                max(t1.fracs, t2.fracs),
+            ),
+        )
+        * 3,
+        (UFixed, UFixed): lambda t1, t2: (
+            UFixed(
+                max(t1.bits - t1.fracs, t2.bits - t2.fracs)
+                + max(t1.fracs, t2.fracs)
+                + 1,
+                max(t1.fracs, t2.fracs),
+            ),
+        )
+        * 3,
+        (UFixed, Float): lambda t1, t2: (t2,) * 3,
     }
     float_rules = {
-        (Float, Int): lambda t1, t2: t1,
-        (Float, UInt): lambda t1, t2: t1,
-        (Float, Index): lambda t1, t2: t1,
-        (Float, Fixed): lambda t1, t2: t1,
-        (Float, UFixed): lambda t1, t2: t1,
-        (Float, Float): lambda t1, t2: t1 if t1.bits >= t2.bits else t2,
+        (Float, Int): lambda t1, t2: (t1,) * 3,
+        (Float, UInt): lambda t1, t2: (t1,) * 3,
+        (Float, Index): lambda t1, t2: (t1,) * 3,
+        (Float, Fixed): lambda t1, t2: (t1,) * 3,
+        (Float, UFixed): lambda t1, t2: (t1,) * 3,
+        (Float, Float): lambda t1, t2: ((t1 if t1.bits >= t2.bits else t2),) * 3,
     }
     return TypingRule(
         [int_rules, uint_rules, index_rules, fixed_rules, ufixed_rules, float_rules],
@@ -285,64 +313,94 @@ def add_sub_rule():
 
 def mul_rule():
     int_rules = {
-        (Int, Int): lambda t1, t2: Int(t1.bits + t2.bits),
-        (Int, UInt): lambda t1, t2: Int(t1.bits + t2.bits),
-        (Int, Index): lambda t1, t2: Int(t1.bits + t2.bits),
-        (Int, Fixed): lambda t1, t2: Fixed(t1.bits + t2.bits, max(t1.fracs, t2.fracs)),
-        (Int, UFixed): lambda t1, t2: Fixed(t1.bits + t2.bits, max(t1.fracs, t2.fracs)),
-        (Int, Float): lambda t1, t2: t2,
+        (Int, Int): lambda t1, t2: (Int(t1.bits + t2.bits),) * 3,
+        (Int, UInt): lambda t1, t2: (Int(t1.bits + t2.bits),) * 3,
+        (Int, Index): lambda t1, t2: (Int(t1.bits + t2.bits),) * 3,
+        (Int, Fixed): lambda t1, t2: (
+            Fixed(t1.bits + t2.bits, max(t1.fracs, t2.fracs)),
+        )
+        * 3,
+        (Int, UFixed): lambda t1, t2: (
+            Fixed(t1.bits + t2.bits, max(t1.fracs, t2.fracs)),
+        )
+        * 3,
+        (Int, Float): lambda t1, t2: (t2,) * 3,
     }
     uint_rules = {
-        (UInt, Int): lambda t1, t2: Int(t1.bits + t2.bits),
-        (UInt, UInt): lambda t1, t2: UInt(t1.bits + t2.bits),
-        (UInt, Index): lambda t1, t2: UInt(t1.bits + t2.bits),
-        (UInt, Fixed): lambda t1, t2: Fixed(t1.bits + t2.bits, max(t1.fracs, t2.fracs)),
-        (UInt, UFixed): lambda t1, t2: UFixed(
-            t1.bits + t2.bits, max(t1.fracs, t2.fracs)
-        ),
-        (UInt, Float): lambda t1, t2: t2,
+        (UInt, Int): lambda t1, t2: (Int(t1.bits + t2.bits),) * 3,
+        (UInt, UInt): lambda t1, t2: (UInt(t1.bits + t2.bits),) * 3,
+        (UInt, Index): lambda t1, t2: (UInt(t1.bits + t2.bits),) * 3,
+        (UInt, Fixed): lambda t1, t2: (
+            Fixed(t1.bits + t2.bits, max(t1.fracs, t2.fracs)),
+        )
+        * 3,
+        (UInt, UFixed): lambda t1, t2: (
+            UFixed(t1.bits + t2.bits, max(t1.fracs, t2.fracs)),
+        )
+        * 3,
+        (UInt, Float): lambda t1, t2: (t2,) * 3,
     }
     index_rules = {
-        (Index, Int): lambda t1, t2: Int(t1.bits + t2.bits),
-        (Index, UInt): lambda t1, t2: UInt(t1.bits + t2.bits),
-        (Index, Index): lambda t1, t2: Index(),
-        (Index, Fixed): lambda t1, t2: Fixed(
-            t1.bits + t2.bits, max(t1.fracs, t2.fracs)
-        ),
-        (Index, UFixed): lambda t1, t2: UFixed(
-            t1.bits + t2.bits, max(t1.fracs, t2.fracs)
-        ),
-        (Index, Float): lambda t1, t2: t2,
+        (Index, Int): lambda t1, t2: (Int(t1.bits + t2.bits),) * 3,
+        (Index, UInt): lambda t1, t2: (UInt(t1.bits + t2.bits),) * 3,
+        (Index, Index): lambda t1, t2: (Index(),) * 3,
+        (Index, Fixed): lambda t1, t2: (
+            Fixed(t1.bits + t2.bits, max(t1.fracs, t2.fracs)),
+        )
+        * 3,
+        (Index, UFixed): lambda t1, t2: (
+            UFixed(t1.bits + t2.bits, max(t1.fracs, t2.fracs)),
+        )
+        * 3,
+        (Index, Float): lambda t1, t2: (t2,) * 3,
     }
     fixed_rules = {
-        (Fixed, Int): lambda t1, t2: Fixed(t1.bits + t2.bits, max(t1.fracs, t2.fracs)),
-        (Fixed, UInt): lambda t1, t2: Fixed(t1.bits + t2.bits, max(t1.fracs, t2.fracs)),
-        (Fixed, Index): lambda t1, t2: Fixed(
-            t1.bits + t2.bits, max(t1.fracs, t2.fracs)
-        ),
-        (Fixed, Fixed): lambda t1, t2: Fixed(t1.bits + t2.bits, t1.fracs + t2.fracs),
-        (Fixed, UFixed): lambda t1, t2: Fixed(t1.bits + t2.bits, t1.fracs + t2.fracs),
-        (Fixed, Float): lambda t1, t2: t2,
+        (Fixed, Int): lambda t1, t2: (
+            Fixed(t1.bits + t2.bits, max(t1.fracs, t2.fracs)),
+        )
+        * 3,
+        (Fixed, UInt): lambda t1, t2: (
+            Fixed(t1.bits + t2.bits, max(t1.fracs, t2.fracs)),
+        )
+        * 3,
+        (Fixed, Index): lambda t1, t2: (
+            Fixed(t1.bits + t2.bits, max(t1.fracs, t2.fracs)),
+        )
+        * 3,
+        (Fixed, Fixed): lambda t1, t2: (Fixed(t1.bits + t2.bits, t1.fracs + t2.fracs),)
+        * 3,
+        (Fixed, UFixed): lambda t1, t2: (Fixed(t1.bits + t2.bits, t1.fracs + t2.fracs),)
+        * 3,
+        (Fixed, Float): lambda t1, t2: (t2,) * 3,
     }
     ufixed_rules = {
-        (UFixed, Int): lambda t1, t2: Fixed(t1.bits + t2.bits, max(t1.fracs, t2.fracs)),
-        (UFixed, UInt): lambda t1, t2: UFixed(
-            t1.bits + t2.bits, max(t1.fracs, t2.fracs)
-        ),
-        (UFixed, Index): lambda t1, t2: Fixed(
-            t1.bits + t2.bits, max(t1.fracs, t2.fracs)
-        ),
-        (UFixed, Fixed): lambda t1, t2: Fixed(t1.bits + t2.bits, t1.fracs + t2.fracs),
-        (UFixed, UFixed): lambda t1, t2: UFixed(t1.bits + t2.bits, t1.fracs + t2.fracs),
-        (UFixed, Float): lambda t1, t2: t2,
+        (UFixed, Int): lambda t1, t2: (
+            Fixed(t1.bits + t2.bits, max(t1.fracs, t2.fracs)),
+        )
+        * 3,
+        (UFixed, UInt): lambda t1, t2: (
+            UFixed(t1.bits + t2.bits, max(t1.fracs, t2.fracs)),
+        )
+        * 3,
+        (UFixed, Index): lambda t1, t2: (
+            Fixed(t1.bits + t2.bits, max(t1.fracs, t2.fracs)),
+        )
+        * 3,
+        (UFixed, Fixed): lambda t1, t2: (Fixed(t1.bits + t2.bits, t1.fracs + t2.fracs),)
+        * 3,
+        (UFixed, UFixed): lambda t1, t2: (
+            UFixed(t1.bits + t2.bits, t1.fracs + t2.fracs),
+        )
+        * 3,
+        (UFixed, Float): lambda t1, t2: (t2,) * 3,
     }
     float_rules = {
-        (Float, Int): lambda t1, t2: t1,
-        (Float, UInt): lambda t1, t2: t1,
-        (Float, Index): lambda t1, t2: t1,
-        (Float, Fixed): lambda t1, t2: t1,
-        (Float, UFixed): lambda t1, t2: t1,
-        (Float, Float): lambda t1, t2: t1 if t1.bits >= t2.bits else t2,
+        (Float, Int): lambda t1, t2: (t1,) * 3,
+        (Float, UInt): lambda t1, t2: (t1,) * 3,
+        (Float, Index): lambda t1, t2: (t1,) * 3,
+        (Float, Fixed): lambda t1, t2: (t1,) * 3,
+        (Float, UFixed): lambda t1, t2: (t1,) * 3,
+        (Float, Float): lambda t1, t2: ((t1 if t1.bits >= t2.bits else t2),) * 3,
     }
     return TypingRule(
         [int_rules, uint_rules, index_rules, fixed_rules, ufixed_rules, float_rules]
@@ -351,60 +409,84 @@ def mul_rule():
 
 def div_rule():
     int_rules = {
-        (Int, Int): lambda t1, t2: t1,
-        (Int, UInt): lambda t1, t2: t1,
-        (Int, Index): lambda t1, t2: t1,
-        (Int, Fixed): lambda t1, t2: Fixed(t1.bits + t2.bits, t1.bits - t2.fracs),
-        (Int, UFixed): lambda t1, t2: Fixed(t1.bits + t2.bits + 1, t1.bits - t2.fracs),
-        (Int, Float): lambda t1, t2: t2,
+        (Int, Int): lambda t1, t2: (t1,) * 3,
+        (Int, UInt): lambda t1, t2: (t1,) * 3,
+        (Int, Index): lambda t1, t2: (t1,) * 3,
+        (Int, Fixed): lambda t1, t2: (Fixed(t1.bits + t2.bits, t1.bits - t2.fracs),)
+        * 3,
+        (Int, UFixed): lambda t1, t2: (
+            Fixed(t1.bits + t2.bits + 1, t1.bits - t2.fracs),
+        )
+        * 3,
+        (Int, Float): lambda t1, t2: (t2,) * 3,
     }
     uint_rules = {
-        (UInt, Int): lambda t1, t2: Int(t1.bits),
-        (UInt, UInt): lambda t1, t2: t1,
-        (UInt, Index): lambda t1, t2: t1,
-        (UInt, Fixed): lambda t1, t2: Fixed(t1.bits + t2.bits, t1.bits - t2.fracs),
-        (UInt, UFixed): lambda t1, t2: UFixed(t1.bits + t2.bits, t1.bits - t2.fracs),
-        (UInt, Float): lambda t1, t2: t2,
+        (UInt, Int): lambda t1, t2: (Int(t1.bits),) * 3,
+        (UInt, UInt): lambda t1, t2: (t1,) * 3,
+        (UInt, Index): lambda t1, t2: (t1,) * 3,
+        (UInt, Fixed): lambda t1, t2: (Fixed(t1.bits + t2.bits, t1.bits - t2.fracs),)
+        * 3,
+        (UInt, UFixed): lambda t1, t2: (UFixed(t1.bits + t2.bits, t1.bits - t2.fracs),)
+        * 3,
+        (UInt, Float): lambda t1, t2: (t2,) * 3,
     }
     index_rules = {
-        (Index, Int): lambda t1, t2: Int(t1.bits),
-        (Index, UInt): lambda t1, t2: t1,
-        (Index, Index): lambda t1, t2: Index(),
-        (Index, Fixed): lambda t1, t2: Fixed(t1.bits + t2.bits, t1.bits - t2.fracs),
-        (Index, UFixed): lambda t1, t2: UFixed(t1.bits + t2.bits, t1.bits - t2.fracs),
-        (Index, Float): lambda t1, t2: t2,
+        (Index, Int): lambda t1, t2: (Int(t1.bits),) * 3,
+        (Index, UInt): lambda t1, t2: (t1,) * 3,
+        (Index, Index): lambda t1, t2: (Index(),) * 3,
+        (Index, Fixed): lambda t1, t2: (Fixed(t1.bits + t2.bits, t1.bits - t2.fracs),)
+        * 3,
+        (Index, UFixed): lambda t1, t2: (UFixed(t1.bits + t2.bits, t1.bits - t2.fracs),)
+        * 3,
+        (Index, Float): lambda t1, t2: (t2,) * 3,
     }
     fixed_rules = {
-        (Fixed, Int): lambda t1, t2: Fixed(t1.bits + t2.bits, t2.bits + t1.fracs),
-        (Fixed, UInt): lambda t1, t2: Fixed(t1.bits + t2.bits + 1, t2.bits + t1.fracs),
-        (Fixed, Index): lambda t1, t2: Fixed(t1.bits + t2.bits + 1, t2.bits + t1.fracs),
-        (Fixed, Fixed): lambda t1, t2: Fixed(
-            t1.bits + t2.bits, t2.bits - t2.fracs + t1.fracs
-        ),
-        (Fixed, UFixed): lambda t1, t2: Fixed(
-            t1.bits + t2.bits + 1, t2.bits - t2.fracs + t1.fracs
-        ),
-        (Fixed, Float): lambda t1, t2: t2,
+        (Fixed, Int): lambda t1, t2: (Fixed(t1.bits + t2.bits, t2.bits + t1.fracs),)
+        * 3,
+        (Fixed, UInt): lambda t1, t2: (
+            Fixed(t1.bits + t2.bits + 1, t2.bits + t1.fracs),
+        )
+        * 3,
+        (Fixed, Index): lambda t1, t2: (
+            Fixed(t1.bits + t2.bits + 1, t2.bits + t1.fracs),
+        )
+        * 3,
+        (Fixed, Fixed): lambda t1, t2: (
+            Fixed(t1.bits + t2.bits, t2.bits - t2.fracs + t1.fracs),
+        )
+        * 3,
+        (Fixed, UFixed): lambda t1, t2: (
+            Fixed(t1.bits + t2.bits + 1, t2.bits - t2.fracs + t1.fracs),
+        )
+        * 3,
+        (Fixed, Float): lambda t1, t2: (t2,) * 3,
     }
     ufixed_rules = {
-        (UFixed, Int): lambda t1, t2: Fixed(t1.bits + t2.bits + 1, t2.bits + t1.fracs),
-        (UFixed, UInt): lambda t1, t2: UFixed(t1.bits + t2.bits, t2.bits + t1.fracs),
-        (UFixed, Index): lambda t1, t2: UFixed(t1.bits + t2.bits, t2.bits + t1.fracs),
-        (UFixed, Fixed): lambda t1, t2: Fixed(
-            t1.bits + t2.bits, t2.bits - t2.fracs + t1.fracs
-        ),
-        (UFixed, UFixed): lambda t1, t2: UFixed(
-            t1.bits + t2.bits, t2.bits - t2.fracs + t1.fracs
-        ),
-        (UFixed, Float): lambda t1, t2: t2,
+        (UFixed, Int): lambda t1, t2: (
+            Fixed(t1.bits + t2.bits + 1, t2.bits + t1.fracs),
+        )
+        * 3,
+        (UFixed, UInt): lambda t1, t2: (UFixed(t1.bits + t2.bits, t2.bits + t1.fracs),)
+        * 3,
+        (UFixed, Index): lambda t1, t2: (UFixed(t1.bits + t2.bits, t2.bits + t1.fracs),)
+        * 3,
+        (UFixed, Fixed): lambda t1, t2: (
+            Fixed(t1.bits + t2.bits, t2.bits - t2.fracs + t1.fracs),
+        )
+        * 3,
+        (UFixed, UFixed): lambda t1, t2: (
+            UFixed(t1.bits + t2.bits, t2.bits - t2.fracs + t1.fracs),
+        )
+        * 3,
+        (UFixed, Float): lambda t1, t2: (t2,) * 3,
     }
     float_rules = {
-        (Float, Int): lambda t1, t2: t1,
-        (Float, UInt): lambda t1, t2: t1,
-        (Float, Index): lambda t1, t2: t1,
-        (Float, Fixed): lambda t1, t2: t1,
-        (Float, UFixed): lambda t1, t2: t1,
-        (Float, Float): lambda t1, t2: t1 if t1.bits >= t2.bits else t2,
+        (Float, Int): lambda t1, t2: (t1,) * 3,
+        (Float, UInt): lambda t1, t2: (t1,) * 3,
+        (Float, Index): lambda t1, t2: (t1,) * 3,
+        (Float, Fixed): lambda t1, t2: (t1,) * 3,
+        (Float, UFixed): lambda t1, t2: (t1,) * 3,
+        (Float, Float): lambda t1, t2: ((t1 if t1.bits >= t2.bits else t2),) * 3,
     }
     return TypingRule(
         [int_rules, uint_rules, index_rules, fixed_rules, ufixed_rules, float_rules],
@@ -413,88 +495,114 @@ def div_rule():
 
 def mod_rule():
     int_rules = {
-        (Int, Int): lambda t1, t2: Int(max(t1.bits, t2.bits)),
-        (Int, UInt): lambda t1, t2: Int(max(t1.bits, t2.bits + 1)),
-        (Int, Index): lambda t1, t2: Int(max(t1.bits, t2.bits + 1)),
-        (Int, Fixed): lambda t1, t2: Fixed(
-            max(t1.bits, t2.bits - t2.fracs) + t2.fracs, t2.fracs
-        ),
-        (Int, UFixed): lambda t1, t2: Fixed(
-            max(t1.bits, t2.bits - t2.fracs + 1) + t2.fracs, t2.fracs
-        ),
-        (Int, Float): lambda t1, t2: t2,
+        (Int, Int): lambda t1, t2: (Int(max(t1.bits, t2.bits)),) * 3,
+        (Int, UInt): lambda t1, t2: (Int(max(t1.bits, t2.bits + 1)),) * 3,
+        (Int, Index): lambda t1, t2: (Int(max(t1.bits, t2.bits + 1)),) * 3,
+        (Int, Fixed): lambda t1, t2: (
+            Fixed(max(t1.bits, t2.bits - t2.fracs) + t2.fracs, t2.fracs),
+        )
+        * 3,
+        (Int, UFixed): lambda t1, t2: (
+            Fixed(max(t1.bits, t2.bits - t2.fracs + 1) + t2.fracs, t2.fracs),
+        )
+        * 3,
+        (Int, Float): lambda t1, t2: (t2,) * 3,
     }
     uint_rules = {
-        (UInt, Int): lambda t1, t2: Int(max(t1.bits + 1, t2.bits)),
-        (UInt, UInt): lambda t1, t2: UInt(max(t1.bits, t2.bits)),
-        (UInt, Index): lambda t1, t2: UInt(max(t1.bits, t2.bits)),
-        (UInt, Fixed): lambda t1, t2: Fixed(
-            max(t1.bits + 1, t2.bits - t2.fracs) + t2.fracs, t2.fracs
-        ),
-        (UInt, UFixed): lambda t1, t2: UFixed(
-            max(t1.bits, t2.bits - t2.fracs) + t2.fracs, t2.fracs
-        ),
-        (UInt, Float): lambda t1, t2: t2,
+        (UInt, Int): lambda t1, t2: (Int(max(t1.bits + 1, t2.bits)),) * 3,
+        (UInt, UInt): lambda t1, t2: (UInt(max(t1.bits, t2.bits)),) * 3,
+        (UInt, Index): lambda t1, t2: (UInt(max(t1.bits, t2.bits)),) * 3,
+        (UInt, Fixed): lambda t1, t2: (
+            Fixed(max(t1.bits + 1, t2.bits - t2.fracs) + t2.fracs, t2.fracs),
+        )
+        * 3,
+        (UInt, UFixed): lambda t1, t2: (
+            UFixed(max(t1.bits, t2.bits - t2.fracs) + t2.fracs, t2.fracs),
+        )
+        * 3,
+        (UInt, Float): lambda t1, t2: (t2,) * 3,
     }
     index_rules = {
-        (Index, Int): lambda t1, t2: Int(max(t1.bits + 1, t2.bits)),
-        (Index, UInt): lambda t1, t2: UInt(max(t1.bits, t2.bits)),
-        (Index, Index): lambda t1, t2: Index(),
-        (Index, Fixed): lambda t1, t2: Fixed(
-            max(t1.bits + 1, t2.bits - t2.fracs) + t2.fracs, t2.fracs
-        ),
-        (Index, UFixed): lambda t1, t2: UFixed(
-            max(t1.bits, t2.bits - t2.fracs) + t2.fracs, t2.fracs
-        ),
-        (Index, Float): lambda t1, t2: t2,
+        (Index, Int): lambda t1, t2: (Int(max(t1.bits + 1, t2.bits)),) * 3,
+        (Index, UInt): lambda t1, t2: (UInt(max(t1.bits, t2.bits)),) * 3,
+        (Index, Index): lambda t1, t2: (Index(),) * 3,
+        (Index, Fixed): lambda t1, t2: (
+            Fixed(max(t1.bits + 1, t2.bits - t2.fracs) + t2.fracs, t2.fracs),
+        )
+        * 3,
+        (Index, UFixed): lambda t1, t2: (
+            UFixed(max(t1.bits, t2.bits - t2.fracs) + t2.fracs, t2.fracs),
+        )
+        * 3,
+        (Index, Float): lambda t1, t2: (t2,) * 3,
     }
     fixed_rules = {
-        (Fixed, Int): lambda t1, t2: Fixed(
-            max(t1.bits - t1.fracs, t2.bits) + t1.fracs, t1.fracs
-        ),
-        (Fixed, UInt): lambda t1, t2: Fixed(
-            max(t1.bits - t1.fracs, t2.bits + 1) + t1.fracs, t1.fracs
-        ),
-        (Fixed, Index): lambda t1, t2: Fixed(
-            max(t1.bits - t1.fracs, t2.bits + 1) + t1.fracs, t1.fracs
-        ),
-        (Fixed, Fixed): lambda t1, t2: Fixed(
-            max(t1.bits - t1.fracs, t2.bits - t2.fracs) + max(t1.fracs, t2.fracs),
-            max(t1.fracs, t2.fracs),
-        ),
-        (Fixed, UFixed): lambda t1, t2: Fixed(
-            max(t1.bits - t1.fracs, t2.bits - t2.fracs + 1) + max(t1.fracs, t2.fracs),
-            max(t1.fracs, t2.fracs),
-        ),
-        (Fixed, Float): lambda t1, t2: t2,
+        (Fixed, Int): lambda t1, t2: (
+            Fixed(max(t1.bits - t1.fracs, t2.bits) + t1.fracs, t1.fracs),
+        )
+        * 3,
+        (Fixed, UInt): lambda t1, t2: (
+            Fixed(max(t1.bits - t1.fracs, t2.bits + 1) + t1.fracs, t1.fracs),
+        )
+        * 3,
+        (Fixed, Index): lambda t1, t2: (
+            Fixed(max(t1.bits - t1.fracs, t2.bits + 1) + t1.fracs, t1.fracs),
+        )
+        * 3,
+        (Fixed, Fixed): lambda t1, t2: (
+            Fixed(
+                max(t1.bits - t1.fracs, t2.bits - t2.fracs) + max(t1.fracs, t2.fracs),
+                max(t1.fracs, t2.fracs),
+            ),
+        )
+        * 3,
+        (Fixed, UFixed): lambda t1, t2: (
+            Fixed(
+                max(t1.bits - t1.fracs, t2.bits - t2.fracs + 1)
+                + max(t1.fracs, t2.fracs),
+                max(t1.fracs, t2.fracs),
+            ),
+        )
+        * 3,
+        (Fixed, Float): lambda t1, t2: (t2,) * 3,
     }
     ufixed_rules = {
-        (UFixed, Int): lambda t1, t2: Fixed(
-            max(t1.bits - t1.fracs + 1, t2.bits) + t1.fracs, t1.fracs
-        ),
-        (UFixed, UInt): lambda t1, t2: UFixed(
-            max(t1.bits - t1.fracs, t2.bits) + t1.fracs, t1.fracs
-        ),
-        (UFixed, Index): lambda t1, t2: UFixed(
-            max(t1.bits - t1.fracs, t2.bits) + t1.fracs, t1.fracs
-        ),
-        (UFixed, Fixed): lambda t1, t2: Fixed(
-            max(t1.bits - t1.fracs + 1, t2.bits - t2.fracs) + max(t1.fracs, t2.fracs),
-            max(t1.fracs, t2.fracs),
-        ),
-        (UFixed, UFixed): lambda t1, t2: UFixed(
-            max(t1.bits - t1.fracs, t2.bits - t2.fracs) + max(t1.fracs, t2.fracs),
-            max(t1.fracs, t2.fracs),
-        ),
-        (UFixed, Float): lambda t1, t2: t2,
+        (UFixed, Int): lambda t1, t2: (
+            Fixed(max(t1.bits - t1.fracs + 1, t2.bits) + t1.fracs, t1.fracs),
+        )
+        * 3,
+        (UFixed, UInt): lambda t1, t2: (
+            UFixed(max(t1.bits - t1.fracs, t2.bits) + t1.fracs, t1.fracs),
+        )
+        * 3,
+        (UFixed, Index): lambda t1, t2: (
+            UFixed(max(t1.bits - t1.fracs, t2.bits) + t1.fracs, t1.fracs),
+        )
+        * 3,
+        (UFixed, Fixed): lambda t1, t2: (
+            Fixed(
+                max(t1.bits - t1.fracs + 1, t2.bits - t2.fracs)
+                + max(t1.fracs, t2.fracs),
+                max(t1.fracs, t2.fracs),
+            ),
+        )
+        * 3,
+        (UFixed, UFixed): lambda t1, t2: (
+            UFixed(
+                max(t1.bits - t1.fracs, t2.bits - t2.fracs) + max(t1.fracs, t2.fracs),
+                max(t1.fracs, t2.fracs),
+            ),
+        )
+        * 3,
+        (UFixed, Float): lambda t1, t2: (t2,) * 3,
     }
     float_rules = {
-        (Float, Int): lambda t1, t2: t1,
-        (Float, UInt): lambda t1, t2: t1,
-        (Float, Index): lambda t1, t2: t1,
-        (Float, Fixed): lambda t1, t2: t1,
-        (Float, UFixed): lambda t1, t2: t1,
-        (Float, Float): lambda t1, t2: t1 if t1.bits >= t2.bits else t2,
+        (Float, Int): lambda t1, t2: (t1,) * 3,
+        (Float, UInt): lambda t1, t2: (t1,) * 3,
+        (Float, Index): lambda t1, t2: (t1,) * 3,
+        (Float, Fixed): lambda t1, t2: (t1,) * 3,
+        (Float, UFixed): lambda t1, t2: (t1,) * 3,
+        (Float, Float): lambda t1, t2: ((t1 if t1.bits >= t2.bits else t2),) * 3,
     }
     return TypingRule(
         [int_rules, uint_rules, index_rules, fixed_rules, ufixed_rules, float_rules],
@@ -554,7 +662,7 @@ class AddHandler(BuiltinHandler):
             "default": DUMMY_BINARY_ARITH_RULE,
             "hls": HLS_ADD_SUB_RULE,
         }
-        return rules[_TYPING_RULE_CONFIG](args[0], args[1])
+        return rules[get_typing_rule_config()](args[0], args[1])
 
     def get_affine_expr(self, node: ast.Call, ivs: list, symbols: list):
         expr_l = self.builder.get_affine_expr(node.args[0], ivs, symbols)
@@ -596,7 +704,7 @@ class SubHandler(BuiltinHandler):
             "default": DUMMY_BINARY_ARITH_RULE,
             "hls": HLS_ADD_SUB_RULE,
         }
-        return rules[_TYPING_RULE_CONFIG](args[0], args[1])
+        return rules[get_typing_rule_config()](args[0], args[1])
 
     def get_affine_expr(self, node: ast.Call, ivs: list, symbols: list):
         expr_l = self.builder.get_affine_expr(node.args[0], ivs, symbols)
@@ -638,7 +746,7 @@ class MultHandler(BuiltinHandler):
             "default": DUMMY_BINARY_ARITH_RULE,
             "hls": HLS_MUL_RULE,
         }
-        return rules[_TYPING_RULE_CONFIG](args[0], args[1])
+        return rules[get_typing_rule_config()](args[0], args[1])
 
     def get_affine_expr(self, node: ast.Call, ivs: list, symbols: list):
         expr_l = self.builder.get_affine_expr(node.args[0], ivs, symbols)
@@ -687,7 +795,7 @@ class DivHandler(BuiltinHandler):
             "default": DUMMY_BINARY_ARITH_RULE,
             "hls": HLS_DIV_RULE,
         }
-        return rules[_TYPING_RULE_CONFIG](args[0], args[1])
+        return rules[get_typing_rule_config()](args[0], args[1])
 
     def get_affine_expr(self, node: ast.Call, ivs: list, symbols: list):
         expr_l = self.builder.get_affine_expr(node.args[0], ivs, symbols)
@@ -716,7 +824,7 @@ class FloorDivHandler(BuiltinHandler):
             "default": DUMMY_BINARY_ARITH_RULE,
             "hls": HLS_DIV_RULE,
         }
-        return rules[_TYPING_RULE_CONFIG](args[0], args[1])
+        return rules[get_typing_rule_config()](args[0], args[1])
 
     def get_affine_expr(self, node: ast.Call, ivs: list, symbols: list):
         expr_l = self.builder.get_affine_expr(node.args[0], ivs, symbols)
@@ -751,7 +859,7 @@ class ModHandler(BuiltinHandler):
             "default": DUMMY_BINARY_ARITH_RULE,
             "hls": HLS_MOD_RULE,
         }
-        return rules[_TYPING_RULE_CONFIG](args[0], args[1])
+        return rules[get_typing_rule_config()](args[0], args[1])
 
     def get_affine_expr(self, node: ast.Call, ivs: list, symbols: list):
         expr_l = self.builder.get_affine_expr(node.args[0], ivs, symbols)
@@ -913,88 +1021,194 @@ DUMMY_COMPARISON_RULE = dummy_comparison_rule()
 # =======================================================================
 def cmp_rule():
     int_rules = {
-        (Int, Int): lambda t1, t2: Int(max(t1.bits, t2.bits)),
-        (Int, UInt): lambda t1, t2: Int(max(t1.bits, t2.bits + 1)),
-        (Int, Index): lambda t1, t2: Int(max(t1.bits, t2.bits + 1)),
-        (Int, Fixed): lambda t1, t2: Fixed(
-            max(t1.bits, t2.bits - t2.fracs) + t2.fracs, t2.fracs
+        (Int, Int): lambda t1, t2: (
+            allo_bool,
+            Int(max(t1.bits, t2.bits)),
+            Int(max(t1.bits, t2.bits)),
         ),
-        (Int, UFixed): lambda t1, t2: Fixed(
-            max(t1.bits, t2.bits - t2.fracs + 1) + t2.fracs, t2.fracs
+        (Int, UInt): lambda t1, t2: (
+            allo_bool,
+            UInt(max(t1.bits, t2.bits + 1)),
+            UInt(max(t1.bits, t2.bits + 1)),
+            "u",
         ),
-        (Int, Float): lambda t1, t2: t2,
+        (Int, Index): lambda t1, t2: (
+            allo_bool,
+            Int(max(t1.bits, t2.bits + 1)),
+            Int(max(t1.bits, t2.bits + 1)),
+        ),
+        (Int, Fixed): lambda t1, t2: (
+            allo_bool,
+            Fixed(max(t1.bits, t2.bits - t2.fracs) + t2.fracs, t2.fracs),
+            Fixed(max(t1.bits, t2.bits - t2.fracs) + t2.fracs, t2.fracs),
+        ),
+        (Int, UFixed): lambda t1, t2: (
+            allo_bool,
+            UFixed(max(t1.bits, t2.bits - t2.fracs + 1) + t2.fracs, t2.fracs),
+            UFixed(max(t1.bits, t2.bits - t2.fracs + 1) + t2.fracs, t2.fracs),
+            "u",
+        ),
+        (Int, Float): lambda t1, t2: (allo_bool, t2, t2),
     }
     uint_rules = {
-        (UInt, Int): lambda t1, t2: Int(max(t1.bits + 1, t2.bits)),
-        (UInt, UInt): lambda t1, t2: UInt(max(t1.bits, t2.bits)),
-        (UInt, Index): lambda t1, t2: UInt(max(t1.bits, t2.bits)),
-        (UInt, Fixed): lambda t1, t2: Fixed(
-            max(t1.bits + 1, t2.bits - t2.fracs) + t2.fracs, t2.fracs
+        (UInt, Int): lambda t1, t2: (
+            allo_bool,
+            UInt(max(t1.bits + 1, t2.bits)),
+            UInt(max(t1.bits + 1, t2.bits)),
+            "u",
         ),
-        (UInt, UFixed): lambda t1, t2: UFixed(
-            max(t1.bits, t2.bits - t2.fracs) + t2.fracs, t2.fracs
+        (UInt, UInt): lambda t1, t2: (
+            allo_bool,
+            UInt(max(t1.bits, t2.bits)),
+            UInt(max(t1.bits, t2.bits)),
+            "u",
         ),
-        (UInt, Float): lambda t1, t2: t2,
+        (UInt, Index): lambda t1, t2: (
+            allo_bool,
+            UInt(max(t1.bits, t2.bits)),
+            UInt(max(t1.bits, t2.bits)),
+            "u",
+        ),
+        (UInt, Fixed): lambda t1, t2: (
+            allo_bool,
+            Fixed(max(t1.bits + 1, t2.bits - t2.fracs) + t2.fracs, t2.fracs),
+            Fixed(max(t1.bits + 1, t2.bits - t2.fracs) + t2.fracs, t2.fracs),
+        ),
+        (UInt, UFixed): lambda t1, t2: (
+            allo_bool,
+            UFixed(max(t1.bits, t2.bits - t2.fracs) + t2.fracs, t2.fracs),
+            UFixed(max(t1.bits, t2.bits - t2.fracs) + t2.fracs, t2.fracs),
+            "u",
+        ),
+        (UInt, Float): lambda t1, t2: (allo_bool, t2, t2),
     }
     index_rules = {
-        (Index, Int): lambda t1, t2: Int(max(t1.bits + 1, t2.bits)),
-        (Index, UInt): lambda t1, t2: UInt(max(t1.bits, t2.bits)),
-        (Index, Index): lambda t1, t2: Index(),
-        (Index, Fixed): lambda t1, t2: Fixed(
-            max(t1.bits + 1, t2.bits - t2.fracs) + t2.fracs, t2.fracs
+        (Index, Int): lambda t1, t2: (
+            allo_bool,
+            Int(max(t1.bits + 1, t2.bits)),
+            Int(max(t1.bits + 1, t2.bits)),
         ),
-        (Index, UFixed): lambda t1, t2: UFixed(
-            max(t1.bits, t2.bits - t2.fracs) + t2.fracs, t2.fracs
+        (Index, UInt): lambda t1, t2: (
+            allo_bool,
+            UInt(max(t1.bits, t2.bits)),
+            UInt(max(t1.bits, t2.bits)),
+            "u",
         ),
-        (Index, Float): lambda t1, t2: t2,
+        (Index, Index): lambda t1, t2: (allo_bool, Index(), Index()),
+        (Index, Fixed): lambda t1, t2: (
+            allo_bool,
+            Fixed(max(t1.bits + 1, t2.bits - t2.fracs) + t2.fracs, t2.fracs),
+            Fixed(max(t1.bits + 1, t2.bits - t2.fracs) + t2.fracs, t2.fracs),
+        ),
+        (Index, UFixed): lambda t1, t2: (
+            allo_bool,
+            UFixed(max(t1.bits, t2.bits - t2.fracs) + t2.fracs, t2.fracs),
+            UFixed(max(t1.bits, t2.bits - t2.fracs) + t2.fracs, t2.fracs),
+            "u",
+        ),
+        (Index, Float): lambda t1, t2: (allo_bool, t2, t2),
     }
     fixed_rules = {
-        (Fixed, Int): lambda t1, t2: Fixed(
-            max(t1.bits - t1.fracs, t2.bits) + t1.fracs, t1.fracs
+        (Fixed, Int): lambda t1, t2: (
+            allo_bool,
+            Fixed(max(t1.bits - t1.fracs, t2.bits) + t1.fracs, t1.fracs),
+            Fixed(max(t1.bits - t1.fracs, t2.bits) + t1.fracs, t1.fracs),
         ),
-        (Fixed, UInt): lambda t1, t2: Fixed(
-            max(t1.bits - t1.fracs, t2.bits + 1) + t1.fracs, t1.fracs
+        (Fixed, UInt): lambda t1, t2: (
+            allo_bool,
+            Fixed(max(t1.bits - t1.fracs, t2.bits + 1) + t1.fracs, t1.fracs),
+            Fixed(max(t1.bits - t1.fracs, t2.bits + 1) + t1.fracs, t1.fracs),
         ),
-        (Fixed, Index): lambda t1, t2: Fixed(
-            max(t1.bits - t1.fracs, t2.bits + 1) + t1.fracs, t1.fracs
+        (Fixed, Index): lambda t1, t2: (
+            allo_bool,
+            Fixed(max(t1.bits - t1.fracs, t2.bits + 1) + t1.fracs, t1.fracs),
+            Fixed(max(t1.bits - t1.fracs, t2.bits + 1) + t1.fracs, t1.fracs),
         ),
-        (Fixed, Fixed): lambda t1, t2: Fixed(
-            max(t1.bits - t1.fracs, t2.bits - t2.fracs) + max(t1.fracs, t2.fracs),
-            max(t1.fracs, t2.fracs),
+        (Fixed, Fixed): lambda t1, t2: (
+            allo_bool,
+            Fixed(
+                max(t1.bits - t1.fracs, t2.bits - t2.fracs) + max(t1.fracs, t2.fracs),
+                max(t1.fracs, t2.fracs),
+            ),
+            Fixed(
+                max(t1.bits - t1.fracs, t2.bits - t2.fracs) + max(t1.fracs, t2.fracs),
+                max(t1.fracs, t2.fracs),
+            ),
         ),
-        (Fixed, UFixed): lambda t1, t2: Fixed(
-            max(t1.bits - t1.fracs, t2.bits - t2.fracs + 1) + max(t1.fracs, t2.fracs),
-            max(t1.fracs, t2.fracs),
+        (Fixed, UFixed): lambda t1, t2: (
+            allo_bool,
+            UFixed(
+                max(t1.bits - t1.fracs, t2.bits - t2.fracs + 1)
+                + max(t1.fracs, t2.fracs),
+                max(t1.fracs, t2.fracs),
+            ),
+            UFixed(
+                max(t1.bits - t1.fracs, t2.bits - t2.fracs + 1)
+                + max(t1.fracs, t2.fracs),
+                max(t1.fracs, t2.fracs),
+            ),
+            "u",
         ),
-        (Fixed, Float): lambda t1, t2: t2,
+        (Fixed, Float): lambda t1, t2: (allo_bool, t2, t2),
     }
     ufixed_rules = {
-        (UFixed, Int): lambda t1, t2: Fixed(
-            max(t1.bits - t1.fracs + 1, t2.bits) + t1.fracs, t1.fracs
+        (UFixed, Int): lambda t1, t2: (
+            allo_bool,
+            UFixed(max(t1.bits - t1.fracs + 1, t2.bits) + t1.fracs, t1.fracs),
+            UFixed(max(t1.bits - t1.fracs + 1, t2.bits) + t1.fracs, t1.fracs),
+            "u",
         ),
-        (UFixed, UInt): lambda t1, t2: UFixed(
-            max(t1.bits - t1.fracs, t2.bits) + t1.fracs, t1.fracs
+        (UFixed, UInt): lambda t1, t2: (
+            allo_bool,
+            UFixed(max(t1.bits - t1.fracs, t2.bits) + t1.fracs, t1.fracs),
+            UFixed(max(t1.bits - t1.fracs, t2.bits) + t1.fracs, t1.fracs),
+            "u",
         ),
-        (UFixed, Index): lambda t1, t2: UFixed(
-            max(t1.bits - t1.fracs, t2.bits) + t1.fracs, t1.fracs
+        (UFixed, Index): lambda t1, t2: (
+            allo_bool,
+            UFixed(max(t1.bits - t1.fracs, t2.bits) + t1.fracs, t1.fracs),
+            UFixed(max(t1.bits - t1.fracs, t2.bits) + t1.fracs, t1.fracs),
+            "u",
         ),
-        (UFixed, Fixed): lambda t1, t2: Fixed(
-            max(t1.bits - t1.fracs + 1, t2.bits - t2.fracs) + max(t1.fracs, t2.fracs),
-            max(t1.fracs, t2.fracs),
+        (UFixed, Fixed): lambda t1, t2: (
+            allo_bool,
+            UFixed(
+                max(t1.bits - t1.fracs + 1, t2.bits - t2.fracs)
+                + max(t1.fracs, t2.fracs),
+                max(t1.fracs, t2.fracs),
+            ),
+            UFixed(
+                max(t1.bits - t1.fracs + 1, t2.bits - t2.fracs)
+                + max(t1.fracs, t2.fracs),
+                max(t1.fracs, t2.fracs),
+            ),
+            "u",
         ),
-        (UFixed, UFixed): lambda t1, t2: UFixed(
-            max(t1.bits - t1.fracs, t2.bits - t2.fracs) + max(t1.fracs, t2.fracs),
-            max(t1.fracs, t2.fracs),
+        (UFixed, UFixed): lambda t1, t2: (
+            allo_bool,
+            UFixed(
+                max(t1.bits - t1.fracs, t2.bits - t2.fracs) + max(t1.fracs, t2.fracs),
+                max(t1.fracs, t2.fracs),
+            ),
+            UFixed(
+                max(t1.bits - t1.fracs, t2.bits - t2.fracs) + max(t1.fracs, t2.fracs),
+                max(t1.fracs, t2.fracs),
+            ),
+            "u",
         ),
-        (UFixed, Float): lambda t1, t2: t2,
+        (UFixed, Float): lambda t1, t2: (allo_bool, t2, t2),
     }
     float_rules = {
-        (Float, Int): lambda t1, t2: t1,
-        (Float, UInt): lambda t1, t2: t1,
-        (Float, Index): lambda t1, t2: t1,
-        (Float, Fixed): lambda t1, t2: t1,
-        (Float, UFixed): lambda t1, t2: t1,
-        (Float, Float): lambda t1, t2: t1 if t1.bits >= t2.bits else t2,
+        (Float, Int): lambda t1, t2: (allo_bool, t1, t1),
+        (Float, UInt): lambda t1, t2: (allo_bool, t1, t1),
+        (Float, Index): lambda t1, t2: (allo_bool, t1, t1),
+        (Float, Fixed): lambda t1, t2: (allo_bool, t1, t1),
+        (Float, UFixed): lambda t1, t2: (allo_bool, t1, t1),
+        (Float, Float): lambda t1, t2: (
+            allo_bool,
+            t1 if t1.bits >= t2.bits else t2,
+            t1 if t1.bits >= t2.bits else t2,
+        ),
     }
     return TypingRule(
         [int_rules, uint_rules, index_rules, fixed_rules, ufixed_rules, float_rules],
@@ -1033,7 +1247,7 @@ class EqHandler(BuiltinHandler):
             "default": DUMMY_COMPARISON_RULE,
             "hls": HLS_CMP_RULE,
         }
-        return rules[_TYPING_RULE_CONFIG](args[0], args[1])
+        return rules[get_typing_rule_config()](args[0], args[1])
 
 
 @register_builtin_handler("NotEq")
@@ -1065,7 +1279,7 @@ class NotEqHandler(BuiltinHandler):
             "default": DUMMY_COMPARISON_RULE,
             "hls": HLS_CMP_RULE,
         }
-        return rules[_TYPING_RULE_CONFIG](args[0], args[1])
+        return rules[get_typing_rule_config()](args[0], args[1])
 
 
 # Less than
@@ -1102,7 +1316,7 @@ class LtHandler(BuiltinHandler):
             "default": DUMMY_COMPARISON_RULE,
             "hls": HLS_CMP_RULE,
         }
-        return rules[_TYPING_RULE_CONFIG](args[0], args[1])
+        return rules[get_typing_rule_config()](args[0], args[1])
 
 
 # Less than or equal
@@ -1139,7 +1353,7 @@ class LtEHandler(BuiltinHandler):
             "default": DUMMY_COMPARISON_RULE,
             "hls": HLS_CMP_RULE,
         }
-        return rules[_TYPING_RULE_CONFIG](args[0], args[1])
+        return rules[get_typing_rule_config()](args[0], args[1])
 
 
 # Greater than
@@ -1176,7 +1390,7 @@ class GtHandler(BuiltinHandler):
             "default": DUMMY_COMPARISON_RULE,
             "hls": HLS_CMP_RULE,
         }
-        return rules[_TYPING_RULE_CONFIG](args[0], args[1])
+        return rules[get_typing_rule_config()](args[0], args[1])
 
 
 # Greater than or equal
@@ -1213,4 +1427,4 @@ class GtEHandler(BuiltinHandler):
             "default": DUMMY_COMPARISON_RULE,
             "hls": HLS_CMP_RULE,
         }
-        return rules[_TYPING_RULE_CONFIG](args[0], args[1])
+        return rules[get_typing_rule_config()](args[0], args[1])

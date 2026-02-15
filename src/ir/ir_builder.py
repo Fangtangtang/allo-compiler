@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import ast
+from contextlib import contextmanager
 from allo._mlir.dialects import (
     allo as allo_d,
     bufferization as buf_d,
@@ -48,12 +49,20 @@ from allo._mlir.ir import (
 from allo.spmw import FunctionType as FuncType
 from allo.utils import register_dialect
 from allo.memory import Layout
-from allo.ir.utils import MockArg, MockScalar, MockBuffer, MockCallResultTuple
-from .utils import SymbolTable, BlockScopeGuard, Scope
+from allo.ir.utils import MockArg, MockCallResultTuple
+from .utils import SymbolTable, Scope
 from .builtin import BUILTIN_HANDLERS
 
 
 class IRBuilder(ast.NodeVisitor):
+    @contextmanager
+    def block_scope(self):
+        self.scopes.append(Scope())
+        try:
+            yield
+        finally:
+            self.scopes.pop()
+
     def __init__(self, symbol_table: SymbolTable):
         super().__init__()
         self.symbol_table: SymbolTable = symbol_table
@@ -87,9 +96,6 @@ class IRBuilder(ast.NodeVisitor):
         visitor = getattr(self, method, None)
         assert visitor is not None, f"{method} not found"
         return visitor(node)
-
-    def block_scope_guard(self):
-        return BlockScopeGuard(self.scopes)
 
     def set_ip(self, ip):
         if not isinstance(ip, InsertionPoint):
@@ -493,7 +499,7 @@ class IRBuilder(ast.NodeVisitor):
             for_op = scf_d.ForOp(lb, rb, step, ip=self.get_ip())
             scf_d.YieldOp([], ip=InsertionPoint(for_op.body))
 
-        with self.block_scope_guard():
+        with self.block_scope():
             self.put_var(
                 name=node.target.id,
                 val=MockArg(for_op.induction_variable, is_affine=use_affine_loop),
@@ -513,7 +519,7 @@ class IRBuilder(ast.NodeVisitor):
         scf_d.ConditionOp(cond, [], ip=self.get_ip())
         self.pop_ip()
         self.set_ip(while_op.after.blocks[0])
-        with self.block_scope_guard():
+        with self.block_scope():
             for stmt in node.body:
                 self.visit(stmt)
             scf_d.YieldOp([], ip=self.get_ip())
@@ -525,11 +531,11 @@ class IRBuilder(ast.NodeVisitor):
         if isinstance(node.test, ast.Constant):  # simple DCE
             # [NOTE]: do not eliminate the branch on AST, so we can keep the original scoping
             if node.test.value:
-                with self.block_scope_guard():
+                with self.block_scope():
                     for stmt in node.body:
                         self.visit(stmt)
             else:
-                with self.block_scope_guard():
+                with self.block_scope():
                     for stmt in node.orelse:
                         self.visit(stmt)
             return
@@ -539,7 +545,7 @@ class IRBuilder(ast.NodeVisitor):
             has_else=len(node.orelse),
         )
         self.set_ip(if_op.then_block)
-        with self.block_scope_guard():
+        with self.block_scope():
             for stmt in node.body:
                 self.visit(stmt)
             scf_d.YieldOp([], ip=self.get_ip())
@@ -547,7 +553,7 @@ class IRBuilder(ast.NodeVisitor):
         if len(node.orelse) > 0:
             else_block = if_op.elseRegion.blocks[0]
             self.set_ip(else_block)
-            with self.block_scope_guard():
+            with self.block_scope():
                 for stmt in node.orelse:
                     self.visit(stmt)
                 scf_d.YieldOp([], ip=self.get_ip())
@@ -720,7 +726,7 @@ class IRBuilder(ast.NodeVisitor):
         func_op.add_entry_block()
         self.current_func = func_op
         self.reserved_bindings.clear()
-        with self.block_scope_guard():
+        with self.block_scope():
             # function arguments
             for i, (ast_arg, arg) in enumerate(zip(node.args.args, func_op.arguments)):
                 mock_arg = MockArg(arg, is_affine=False, idx=i)

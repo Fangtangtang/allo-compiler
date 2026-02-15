@@ -4,10 +4,11 @@
 import copy
 from typing import Union
 from collections import deque, ChainMap
+from contextlib import contextmanager
 from collections.abc import Callable
 import numpy as np
 import ast
-from .utils import get_ast, SymbolTable, BlockScopeGuard, Scope, ErrorValue
+from .utils import get_ast, SymbolTable, Scope, ErrorValue
 from .typing_rule import cpp_style_registry
 from allo.spmw import FunctionType
 from allo.ir.types import (
@@ -24,46 +25,45 @@ from .builtin import BUILTIN_HANDLERS
 
 
 class ASTProcessor(ast.NodeTransformer):
-    class Namespace:
-        def __init__(self, processor: "ASTProcessor", node: ast.FunctionDef):
-            self.proc = processor
-            self.name = node.name
-            self.symbols = getattr(node, "template_bindings", {})
-
-        def __enter__(self):
-            self.proc.current_namespace = self.name
-            self.proc.scopes.append(Scope())
-            self.proc.symbols = ChainMap(self.symbols, self.proc.global_symbols)
-
-        def __exit__(self, exc_type, exc_val, exc_tb):
-            self.proc.scopes.pop()
-            self.proc.current_namespace = None
-            self.proc.symbols = self.proc.global_symbols
-
+    @contextmanager
     def namespace(self, node: ast.FunctionDef):
-        return ASTProcessor.Namespace(self, node)
+        name = node.name
+        symbols = getattr(node, "template_bindings", {})
 
-    class FunctionScope:
-        def __init__(self, processor: "ASTProcessor", node: ast.FunctionDef):
-            self.proc = processor
-            self.func = node
-            self.symbols_ckpt = self.proc.symbols
+        self.current_namespace = name
+        self.scopes.append(Scope())
+        self.symbols = ChainMap(symbols, self.global_symbols)
 
-        def __enter__(self):
-            self.proc.symbols = ChainMap(
-                getattr(self.func, "template_bindings", {}), self.proc.symbols
-            )
-            self.proc.current_func = self.func.name
-            self.proc.scopes.append(Scope())
+        try:
+            yield
+        finally:
+            self.scopes.pop()
+            self.current_namespace = None
+            self.symbols = self.global_symbols
 
-        def __exit__(self, exc_type, exc_val, exc_tb):
-            self.proc.scopes.pop()
-            self.proc.symbols = self.symbols_ckpt
-            self.proc.current_func = None
-            self.proc.meta_cond.clear()
-
+    @contextmanager
     def function_scope(self, node: ast.FunctionDef):
-        return ASTProcessor.FunctionScope(self, node)
+        symbols_ckpt = self.symbols
+
+        self.symbols = ChainMap(getattr(node, "template_bindings", {}), self.symbols)
+        self.current_func = node.name
+        self.scopes.append(Scope())
+
+        try:
+            yield
+        finally:
+            self.scopes.pop()
+            self.symbols = symbols_ckpt
+            self.current_func = None
+            self.meta_cond.clear()
+
+    @contextmanager
+    def block_scope(self):
+        self.scopes.append(Scope())
+        try:
+            yield
+        finally:
+            self.scopes.pop()
 
     def __init__(
         self,
@@ -98,9 +98,6 @@ class ASTProcessor(ast.NodeTransformer):
         visitor = getattr(self, method, None)
         assert visitor is not None, f"{method} not found"
         return visitor(node)
-
-    def block_scope_guard(self):
-        return BlockScopeGuard(self.scopes)
 
     def put_var(self, name, val):
         assert (
@@ -915,7 +912,7 @@ class ASTProcessor(ast.NodeTransformer):
         if isinstance(node.iter, ast.Call):
             # naive for loop
             if isinstance(node.iter.func, ast.Name) and node.iter.func.id == "range":
-                with self.block_scope_guard():
+                with self.block_scope():
                     self.set_loop_iter(node.target)
                     ivs_ = [
                         self.visit_cast(self.visit(iv), Index(), skip_const=True)
@@ -941,7 +938,7 @@ class ASTProcessor(ast.NodeTransformer):
             ranges = node.iter.args
             assert len(targets) == len(ranges)
             loops: list[ast.For] = []
-            with self.block_scope_guard():
+            with self.block_scope():
                 for target, range_ in zip(targets, ranges):
                     self.set_loop_iter(target)
                     iv_ = self.visit_cast(self.visit(range_), Index(), skip_const=True)
@@ -973,7 +970,7 @@ class ASTProcessor(ast.NodeTransformer):
             )
         node.test = self.visit_cast(self.visit(node.test), allo_bool)
         assert len(node.test.shape) == 0, "while condition should be a scalar."
-        with self.block_scope_guard():
+        with self.block_scope():
             node.body = self.visit_body(node.body)
         return node
 
@@ -981,10 +978,10 @@ class ASTProcessor(ast.NodeTransformer):
         # e.g., if i < 10: ... else: ...
         node.test = self.visit_cast(self.visit(node.test), allo_bool)
         assert len(node.test.shape) == 0, "if condition should be a scalar."
-        with self.block_scope_guard():
+        with self.block_scope():
             node.body = self.visit_body(node.body)
         if len(node.orelse) > 0:
-            with self.block_scope_guard():
+            with self.block_scope():
                 node.orelse = self.visit_body(node.orelse)
         return node
 
@@ -1024,7 +1021,7 @@ class ASTProcessor(ast.NodeTransformer):
         attr = module.__name__
         # compile time unrolled loop
         if attr == "meta_for":
-            with self.block_scope_guard():
+            with self.block_scope():
                 target = node.items[0].optional_vars
                 self.set_loop_iter(target)
                 try:
@@ -1322,7 +1319,7 @@ class ASTProcessor(ast.NodeTransformer):
         module = self.resolve_node(node.decorator_list[0].func)
         assert module.__module__.startswith("allo.spmw") and module.__name__ == "work"
         node._type = FunctionType.WORK
-        with self.block_scope_guard():  # to support args shadowing
+        with self.block_scope():  # to support args shadowing
             # keywords
             inputs, outputs, grid = None, None, []
             for kw in node.decorator_list[0].keywords:

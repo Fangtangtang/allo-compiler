@@ -8,7 +8,6 @@ from ..config import get_typing_rule_config
 from allo._mlir.dialects import (
     allo as allo_d,
     arith as arith_d,
-    memref as memref_d,
     linalg as linalg_d,
 )
 from allo._mlir.ir import (
@@ -35,6 +34,8 @@ from allo.ir.types import (
 
 ##################################################
 # Binary Arithmetic Operations
+#
+# [NOTE]: the typing rules are not fully tested!!!
 ##################################################
 
 
@@ -949,6 +950,8 @@ class ModHandler(BuiltinHandler):
 
 ##################################################
 # Binary Comparison Operations
+#
+# [NOTE]: the typing rules are not fully tested!!!
 ##################################################
 
 

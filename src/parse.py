@@ -44,9 +44,6 @@ def parse(fn: Union[Callable, str], instantiate: list = None):
                 name = str(op.attributes["sym_name"]).strip('"')
                 symbol_map[name] = op
 
-        # with open("module.json", "w") as f:
-        #     json.dump(symbol_map, f, indent=2)
-
     top_module = symbol_map[top_name]
     work_grids = {}
     for func_block in top_module.body:

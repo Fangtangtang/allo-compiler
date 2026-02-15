@@ -98,7 +98,7 @@ def test_np_array():
         ones: int32[2, 2] = 1
         return [[1, 2], [3, 4]] + ones
 
-    s = process(kernel8)
+    s = process(kernel8, typing="default")
     assert np.array_equal(s(), np.array([[2, 3], [4, 5]]))
 
     @kernel

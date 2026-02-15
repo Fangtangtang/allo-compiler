@@ -203,6 +203,12 @@ def add_sub_rule():
         )
         * 3,
         (Int, Float): lambda t1, t2: (t2,) * 3,
+        (Int, int): lambda t1, v2: (Int(max(t1.bits + 1, 32)),) * 3,
+        (int, Int): lambda v1, t2: (Int(max(t2.bits + 1, 32)),) * 3,
+        (Int, float): lambda t1, v2: (Float(64),) * 3,
+        (float, Int): lambda v1, t2: (Float(64),) * 3,
+        (Int, np.ndarray): lambda t1, v2: (Int(max(t1.bits + 1, 32)),) * 3,
+        (np.ndarray, Int): lambda v1, t2: (Int(max(t2.bits + 1, 32)),) * 3,
     }
     uint_rules = {
         (UInt, Int): lambda t1, t2: (Int(max(t1.bits + 1, t2.bits) + 1),) * 3,
@@ -217,11 +223,17 @@ def add_sub_rule():
         )
         * 3,
         (UInt, Float): lambda t1, t2: (t2,) * 3,
+        (UInt, int): lambda t1, v2: (UInt(max(t1.bits + 1, 32)),) * 3,
+        (int, UInt): lambda v1, t2: (UInt(max(t2.bits + 1, 32)),) * 3,
+        (UInt, float): lambda t1, v2: (Float(64),) * 3,
+        (float, UInt): lambda v1, t2: (Float(64),) * 3,
+        (UInt, np.ndarray): lambda t1, v2: (UInt(max(t1.bits + 1, 32)),) * 3,
+        (np.ndarray, UInt): lambda v1, t2: (UInt(max(t2.bits + 1, 32)),) * 3,
     }
     index_rules = {
         (Index, Int): lambda t1, t2: (Int(max(t1.bits + 1, t2.bits) + 1),) * 3,
         (Index, UInt): lambda t1, t2: (UInt(max(t1.bits, t2.bits) + 1),) * 3,
-        (Index, Index): lambda t1, t2: (Index(),) * 3,
+        (Index, Index): lambda t1, t2: (UInt(32),) * 3,
         (Index, Fixed): lambda t1, t2: (
             Fixed(max(t1.bits + 1, t2.bits - t2.fracs) + t2.fracs + 1, t2.fracs),
         )
@@ -231,6 +243,10 @@ def add_sub_rule():
         )
         * 3,
         (Index, Float): lambda t1, t2: (t2,) * 3,
+        (Index, int): lambda t1, v2: (UInt(33),) * 3,
+        (int, Index): lambda v1, t2: (UInt(33),) * 3,
+        (Index, np.ndarray): lambda t1, v2: (UInt(33),) * 3,
+        (np.ndarray, Index): lambda v1, t2: (UInt(33),) * 3,
     }
     fixed_rules = {
         (Fixed, Int): lambda t1, t2: (
@@ -305,6 +321,12 @@ def add_sub_rule():
         (Float, Fixed): lambda t1, t2: (t1,) * 3,
         (Float, UFixed): lambda t1, t2: (t1,) * 3,
         (Float, Float): lambda t1, t2: ((t1 if t1.bits >= t2.bits else t2),) * 3,
+        (Float, int): lambda t1, v2: (t1,) * 3,
+        (int, Float): lambda v1, t2: (t2,) * 3,
+        (Float, float): lambda t1, v2: (t1,) * 3,
+        (float, Float): lambda v1, t2: (t2,) * 3,
+        (Float, np.ndarray): lambda t1, v2: (t1,) * 3,
+        (np.ndarray, Float): lambda v1, t2: (t2,) * 3,
     }
     return TypingRule(
         [int_rules, uint_rules, index_rules, fixed_rules, ufixed_rules, float_rules],
@@ -325,6 +347,12 @@ def mul_rule():
         )
         * 3,
         (Int, Float): lambda t1, t2: (t2,) * 3,
+        (Int, int): lambda t1, v2: (Int(t1.bits + 32),) * 3,
+        (int, Int): lambda v1, t2: (Int(t2.bits + 32),) * 3,
+        (Int, float): lambda t1, v2: (Float(64),) * 3,
+        (float, Int): lambda v1, t2: (Float(64),) * 3,
+        (Int, np.ndarray): lambda t1, v2: (Int(t1.bits + 32),) * 3,
+        (np.ndarray, Int): lambda v1, t2: (Int(t2.bits + 32),) * 3,
     }
     uint_rules = {
         (UInt, Int): lambda t1, t2: (Int(t1.bits + t2.bits),) * 3,
@@ -339,11 +367,17 @@ def mul_rule():
         )
         * 3,
         (UInt, Float): lambda t1, t2: (t2,) * 3,
+        (UInt, int): lambda t1, v2: (UInt(t1.bits + 32),) * 3,
+        (int, UInt): lambda v1, t2: (UInt(t2.bits + 32),) * 3,
+        (UInt, float): lambda t1, v2: (Float(64),) * 3,
+        (float, UInt): lambda v1, t2: (Float(64),) * 3,
+        (UInt, np.ndarray): lambda t1, v2: (UInt(t1.bits + 32),) * 3,
+        (np.ndarray, UInt): lambda v1, t2: (UInt(t2.bits + 32),) * 3,
     }
     index_rules = {
         (Index, Int): lambda t1, t2: (Int(t1.bits + t2.bits),) * 3,
         (Index, UInt): lambda t1, t2: (UInt(t1.bits + t2.bits),) * 3,
-        (Index, Index): lambda t1, t2: (Index(),) * 3,
+        (Index, Index): lambda t1, t2: (UInt(32),) * 3,
         (Index, Fixed): lambda t1, t2: (
             Fixed(t1.bits + t2.bits, max(t1.fracs, t2.fracs)),
         )
@@ -353,6 +387,10 @@ def mul_rule():
         )
         * 3,
         (Index, Float): lambda t1, t2: (t2,) * 3,
+        (Index, int): lambda t1, v2: (UInt(64),) * 3,
+        (int, Index): lambda v1, t2: (UInt(64),) * 3,
+        (Index, np.ndarray): lambda t1, v2: (UInt(64),) * 3,
+        (np.ndarray, Index): lambda v1, t2: (UInt(64),) * 3,
     }
     fixed_rules = {
         (Fixed, Int): lambda t1, t2: (
@@ -401,6 +439,12 @@ def mul_rule():
         (Float, Fixed): lambda t1, t2: (t1,) * 3,
         (Float, UFixed): lambda t1, t2: (t1,) * 3,
         (Float, Float): lambda t1, t2: ((t1 if t1.bits >= t2.bits else t2),) * 3,
+        (Float, int): lambda t1, v2: (t1,) * 3,
+        (int, Float): lambda v1, t2: (t2,) * 3,
+        (Float, float): lambda t1, v2: (t1,) * 3,
+        (float, Float): lambda v1, t2: (t2,) * 3,
+        (Float, np.ndarray): lambda t1, v2: (t1,) * 3,
+        (np.ndarray, Float): lambda v1, t2: (t2,) * 3,
     }
     return TypingRule(
         [int_rules, uint_rules, index_rules, fixed_rules, ufixed_rules, float_rules]
@@ -419,6 +463,12 @@ def div_rule():
         )
         * 3,
         (Int, Float): lambda t1, t2: (t2,) * 3,
+        (Int, int): lambda t1, v2: (t1,) * 3,
+        (int, Int): lambda v1, t2: (t2,) * 3,
+        (Int, float): lambda t1, v2: (Float(64),) * 3,
+        (float, Int): lambda v1, t2: (Float(64),) * 3,
+        (Int, np.ndarray): lambda t1, v2: (t1,) * 3,
+        (np.ndarray, Int): lambda v1, t2: (t2,) * 3,
     }
     uint_rules = {
         (UInt, Int): lambda t1, t2: (Int(t1.bits),) * 3,
@@ -429,16 +479,28 @@ def div_rule():
         (UInt, UFixed): lambda t1, t2: (UFixed(t1.bits + t2.bits, t1.bits - t2.fracs),)
         * 3,
         (UInt, Float): lambda t1, t2: (t2,) * 3,
+        (UInt, int): lambda t1, v2: (t1,) * 3,
+        (int, UInt): lambda v1, t2: (t2,) * 3,
+        (UInt, float): lambda t1, v2: (Float(64),) * 3,
+        (float, UInt): lambda v1, t2: (Float(64),) * 3,
+        (UInt, np.ndarray): lambda t1, v2: (t1,) * 3,
+        (np.ndarray, UInt): lambda v1, t2: (t2,) * 3,
     }
     index_rules = {
         (Index, Int): lambda t1, t2: (Int(t1.bits),) * 3,
         (Index, UInt): lambda t1, t2: (t1,) * 3,
-        (Index, Index): lambda t1, t2: (Index(),) * 3,
+        (Index, Index): lambda t1, t2: (UInt(32),) * 3,
         (Index, Fixed): lambda t1, t2: (Fixed(t1.bits + t2.bits, t1.bits - t2.fracs),)
         * 3,
         (Index, UFixed): lambda t1, t2: (UFixed(t1.bits + t2.bits, t1.bits - t2.fracs),)
         * 3,
         (Index, Float): lambda t1, t2: (t2,) * 3,
+        (Index, int): lambda t1, v2: (t1,) * 3,
+        (int, Index): lambda v1, t2: (t2,) * 3,
+        (Index, float): lambda t1, v2: (Float(64),) * 3,
+        (float, Index): lambda v1, t2: (Float(64),) * 3,
+        (Index, np.ndarray): lambda t1, v2: (t1,) * 3,
+        (np.ndarray, Index): lambda v1, t2: (t2,) * 3,
     }
     fixed_rules = {
         (Fixed, Int): lambda t1, t2: (Fixed(t1.bits + t2.bits, t2.bits + t1.fracs),)
@@ -507,6 +569,12 @@ def mod_rule():
         )
         * 3,
         (Int, Float): lambda t1, t2: (t2,) * 3,
+        (Int, int): lambda t1, v2: (Int(max(t1.bits, 32)),) * 3,
+        (int, Int): lambda v1, t2: (Int(max(t2.bits, 32)),) * 3,
+        (Int, float): lambda t1, v2: (Float(64),) * 3,
+        (float, Int): lambda v1, t2: (Float(64),) * 3,
+        (Int, np.ndarray): lambda t1, v2: (Int(max(t1.bits, 32)),) * 3,
+        (np.ndarray, Int): lambda v1, t2: (Int(max(t2.bits, 32)),) * 3,
     }
     uint_rules = {
         (UInt, Int): lambda t1, t2: (Int(max(t1.bits + 1, t2.bits)),) * 3,
@@ -521,11 +589,17 @@ def mod_rule():
         )
         * 3,
         (UInt, Float): lambda t1, t2: (t2,) * 3,
+        (UInt, int): lambda t1, v2: (UInt(max(t1.bits + 1, 32)),) * 3,
+        (int, UInt): lambda v1, t2: (UInt(max(t2.bits + 1, 32)),) * 3,
+        (UInt, float): lambda t1, v2: (Float(64),) * 3,
+        (float, UInt): lambda v1, t2: (Float(64),) * 3,
+        (UInt, np.ndarray): lambda t1, v2: (UInt(max(t1.bits + 1, 32)),) * 3,
+        (np.ndarray, UInt): lambda v1, t2: (UInt(max(t2.bits + 1, 32)),) * 3,
     }
     index_rules = {
         (Index, Int): lambda t1, t2: (Int(max(t1.bits + 1, t2.bits)),) * 3,
         (Index, UInt): lambda t1, t2: (UInt(max(t1.bits, t2.bits)),) * 3,
-        (Index, Index): lambda t1, t2: (Index(),) * 3,
+        (Index, Index): lambda t1, t2: (UInt(32),) * 3,
         (Index, Fixed): lambda t1, t2: (
             Fixed(max(t1.bits + 1, t2.bits - t2.fracs) + t2.fracs, t2.fracs),
         )
@@ -535,6 +609,10 @@ def mod_rule():
         )
         * 3,
         (Index, Float): lambda t1, t2: (t2,) * 3,
+        (Index, int): lambda t1, v2: (Int(max(t1.bits + 1, 32)),) * 3,
+        (int, Index): lambda v1, t2: (Int(max(t2.bits + 1, 32)),) * 3,
+        (Index, np.ndarray): lambda t1, v2: (Int(max(t1.bits + 1, 32)),) * 3,
+        (np.ndarray, Index): lambda v1, t2: (Int(max(t2.bits + 1, 32)),) * 3,
     }
     fixed_rules = {
         (Fixed, Int): lambda t1, t2: (
@@ -1049,6 +1127,26 @@ def cmp_rule():
             "u",
         ),
         (Int, Float): lambda t1, t2: (allo_bool, t2, t2),
+        (Int, int): lambda t1, v2: (
+            allo_bool,
+            Int(max(t1.bits, 32)),
+            Int(max(t1.bits, 32)),
+        ),
+        (int, Int): lambda v1, t2: (
+            allo_bool,
+            Int(max(t2.bits, 32)),
+            Int(max(t2.bits, 32)),
+        ),
+        (Int, np.ndarray): lambda t1, v2: (
+            allo_bool,
+            Int(max(t1.bits, 32)),
+            Int(max(t1.bits, 32)),
+        ),
+        (np.ndarray, Int): lambda v1, t2: (
+            allo_bool,
+            Int(max(t2.bits, 32)),
+            Int(max(t2.bits, 32)),
+        ),
     }
     uint_rules = {
         (UInt, Int): lambda t1, t2: (
@@ -1081,6 +1179,26 @@ def cmp_rule():
             "u",
         ),
         (UInt, Float): lambda t1, t2: (allo_bool, t2, t2),
+        (UInt, int): lambda t1, v2: (
+            allo_bool,
+            UInt(max(t1.bits + 1, 32)),
+            UInt(max(t1.bits + 1, 32)),
+        ),
+        (int, UInt): lambda v1, t2: (
+            allo_bool,
+            UInt(max(t2.bits + 1, 32)),
+            UInt(max(t2.bits + 1, 32)),
+        ),
+        (UInt, np.ndarray): lambda t1, v2: (
+            allo_bool,
+            UInt(max(t1.bits + 1, 32)),
+            UInt(max(t1.bits + 1, 32)),
+        ),
+        (np.ndarray, UInt): lambda v1, t2: (
+            allo_bool,
+            UInt(max(t2.bits + 1, 32)),
+            UInt(max(t2.bits + 1, 32)),
+        ),
     }
     index_rules = {
         (Index, Int): lambda t1, t2: (
@@ -1094,7 +1212,7 @@ def cmp_rule():
             UInt(max(t1.bits, t2.bits)),
             "u",
         ),
-        (Index, Index): lambda t1, t2: (allo_bool, Index(), Index()),
+        (Index, Index): lambda t1, t2: (allo_bool, UInt(32), UInt(32)),
         (Index, Fixed): lambda t1, t2: (
             allo_bool,
             Fixed(max(t1.bits + 1, t2.bits - t2.fracs) + t2.fracs, t2.fracs),
@@ -1107,6 +1225,10 @@ def cmp_rule():
             "u",
         ),
         (Index, Float): lambda t1, t2: (allo_bool, t2, t2),
+        (Index, int): lambda t1, v2: (allo_bool, UInt(32), UInt(32)),
+        (int, Index): lambda v1, t2: (allo_bool, UInt(32), UInt(32)),
+        (Index, np.ndarray): lambda t1, v2: (allo_bool, UInt(32), UInt(32)),
+        (np.ndarray, Index): lambda v1, t2: (allo_bool, UInt(32), UInt(32)),
     }
     fixed_rules = {
         (Fixed, Int): lambda t1, t2: (
@@ -1210,8 +1332,28 @@ def cmp_rule():
             t1 if t1.bits >= t2.bits else t2,
         ),
     }
+    bool_rules = {
+        (UInt, bool): lambda t1, v2: (
+            (allo_bool, t1, t1, "u")
+            if t1.bits == 1
+            else TypeError(f"{t1}, {v2} fail binary comparison rule")
+        ),
+        (bool, UInt): lambda v1, t2: (
+            (allo_bool, t2, t2, "u")
+            if t2.bits == 1
+            else TypeError(f"{v1}, {t2} fail binary comparison rule")
+        ),
+    }
     return TypingRule(
-        [int_rules, uint_rules, index_rules, fixed_rules, ufixed_rules, float_rules],
+        [
+            int_rules,
+            uint_rules,
+            index_rules,
+            fixed_rules,
+            ufixed_rules,
+            float_rules,
+            bool_rules,
+        ],
     )
 
 

@@ -12,8 +12,9 @@ from allo.backend.llvm import LLVMModule
 from allo.backend.simulator import LLVMOMPModule
 
 
-def build(fn: Union[Callable, str], instantiate: list = None):
-    with ir_builder_config_context("hls"):
+def build(fn: Union[Callable, str], instantiate: list = None, typing: str = None):
+    typing = "hls" if typing is None else typing
+    with ir_builder_config_context(typing):
         symbol_table = SymbolTable()
         ast_processor = ASTProcessor(symbol_table, global_symbols=get_global_vars(fn))
         # process the top function
@@ -30,11 +31,11 @@ def build(fn: Union[Callable, str], instantiate: list = None):
         return module, top_name
 
 
-def process(fn: Union[Callable, str], instantiate: list = None):
+def process(fn: Union[Callable, str], instantiate: list = None, typing: str = None):
     """
     Compile the input function.
     """
-    module, top_name = build(fn, instantiate)
+    module, top_name = build(fn, instantiate, typing)
     print(module)
     return LLVMModule(module, top_name)
 

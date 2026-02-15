@@ -4,11 +4,11 @@
 from contextlib import contextmanager
 
 
-_TYPING_RULE_CONFIG = "default" # Global configuration for typing rules
+_TYPING_RULE_CONFIG = "default"  # Global configuration for typing rules
 
 
 @contextmanager
-def ir_builder_config_context(typing_rule_config:str = None):
+def ir_builder_config_context(typing_rule_config: str = None):
     """Context manager for setting the IR Builder configuration."""
     global _TYPING_RULE_CONFIG
     old_config = _TYPING_RULE_CONFIG

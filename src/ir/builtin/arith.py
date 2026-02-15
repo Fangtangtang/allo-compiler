@@ -38,6 +38,9 @@ from allo.ir.types import (
 ##################################################
 
 
+# =======================================================================
+# Default rules
+# =======================================================================
 def dummy_binary_arith_rule():
     int_rules = {
         (Int, Int): lambda t1, t2: (
@@ -179,6 +182,13 @@ def dummy_binary_arith_rule():
         [int_rules, uint_rules, index_rules, float_rules],
     )
 
+
+DUMMY_BINARY_ARITH_RULE = dummy_binary_arith_rule()
+
+
+# =======================================================================
+# HLS rules
+# =======================================================================
 def add_sub_rule():
     int_rules = {
         (Int, Int): lambda t1, t2: Int(max(t1.bits, t2.bits) + 1),
@@ -280,21 +290,21 @@ def mul_rule():
         (Int, Index): lambda t1, t2: Int(t1.bits + t2.bits),
         (Int, Fixed): lambda t1, t2: Fixed(t1.bits + t2.bits, max(t1.fracs, t2.fracs)),
         (Int, UFixed): lambda t1, t2: Fixed(t1.bits + t2.bits, max(t1.fracs, t2.fracs)),
-        (Int, Float): lambda t1, t2: t1 if isinstance(t1, Float) else t2,
+        (Int, Float): lambda t1, t2: t2,
     }
     uint_rules = {
-        # (Uint, Int) covered by (Int, Uint)
+        (UInt, Int): lambda t1, t2: Int(t1.bits + t2.bits),
         (UInt, UInt): lambda t1, t2: UInt(t1.bits + t2.bits),
         (UInt, Index): lambda t1, t2: UInt(t1.bits + t2.bits),
         (UInt, Fixed): lambda t1, t2: Fixed(t1.bits + t2.bits, max(t1.fracs, t2.fracs)),
         (UInt, UFixed): lambda t1, t2: UFixed(
             t1.bits + t2.bits, max(t1.fracs, t2.fracs)
         ),
-        (UInt, Float): lambda t1, t2: t1 if isinstance(t1, Float) else t2,
+        (UInt, Float): lambda t1, t2: t2,
     }
     index_rules = {
-        # (Index, Int) covered by (Int, Index)
-        # (Index, UInt) covered by (UInt, Index)
+        (Index, Int): lambda t1, t2: Int(t1.bits + t2.bits),
+        (Index, UInt): lambda t1, t2: UInt(t1.bits + t2.bits),
         (Index, Index): lambda t1, t2: Index(),
         (Index, Fixed): lambda t1, t2: Fixed(
             t1.bits + t2.bits, max(t1.fracs, t2.fracs)
@@ -302,31 +312,40 @@ def mul_rule():
         (Index, UFixed): lambda t1, t2: UFixed(
             t1.bits + t2.bits, max(t1.fracs, t2.fracs)
         ),
-        (Index, Float): lambda t1, t2: t1 if isinstance(t1, Float) else t2,
+        (Index, Float): lambda t1, t2: t2,
     }
     fixed_rules = {
-        # (Fixed, Int) covered by (Int, Fixed)
-        # (Fixed, UInt) covered by (UInt, Fixed)
-        # (Fixed, Index) covered by (Index, Fixed)
+        (Fixed, Int): lambda t1, t2: Fixed(t1.bits + t2.bits, max(t1.fracs, t2.fracs)),
+        (Fixed, UInt): lambda t1, t2: Fixed(t1.bits + t2.bits, max(t1.fracs, t2.fracs)),
+        (Fixed, Index): lambda t1, t2: Fixed(
+            t1.bits + t2.bits, max(t1.fracs, t2.fracs)
+        ),
         (Fixed, Fixed): lambda t1, t2: Fixed(t1.bits + t2.bits, t1.fracs + t2.fracs),
         (Fixed, UFixed): lambda t1, t2: Fixed(t1.bits + t2.bits, t1.fracs + t2.fracs),
-        (Fixed, Float): lambda t1, t2: t1 if isinstance(t1, Float) else t2,
+        (Fixed, Float): lambda t1, t2: t2,
     }
     ufixed_rules = {
-        # (UFixed, Int) covered by (Int, UFixed)
-        # (UFixed, UInt) covered by (UInt, UFixed)
-        # (UFixed, Index) covered by (Index, UFixed)
-        # (UFixed, Fixed) covered by (Fixed, UFixed)
+        (UFixed, Int): lambda t1, t2: Fixed(t1.bits + t2.bits, max(t1.fracs, t2.fracs)),
+        (UFixed, UInt): lambda t1, t2: UFixed(
+            t1.bits + t2.bits, max(t1.fracs, t2.fracs)
+        ),
+        (UFixed, Index): lambda t1, t2: Fixed(
+            t1.bits + t2.bits, max(t1.fracs, t2.fracs)
+        ),
+        (UFixed, Fixed): lambda t1, t2: Fixed(t1.bits + t2.bits, t1.fracs + t2.fracs),
         (UFixed, UFixed): lambda t1, t2: UFixed(t1.bits + t2.bits, t1.fracs + t2.fracs),
-        (UFixed, Float): lambda t1, t2: t1 if isinstance(t1, Float) else t2,
+        (UFixed, Float): lambda t1, t2: t2,
     }
     float_rules = {
-        # (Float, (Int, UInt, Index, Fixed, UFixed)) covered
-        (Float, Float): lambda t1, t2: t1 if t1.bits >= t2.bits else t2
+        (Float, Int): lambda t1, t2: t1,
+        (Float, UInt): lambda t1, t2: t1,
+        (Float, Index): lambda t1, t2: t1,
+        (Float, Fixed): lambda t1, t2: t1,
+        (Float, UFixed): lambda t1, t2: t1,
+        (Float, Float): lambda t1, t2: t1 if t1.bits >= t2.bits else t2,
     }
     return TypingRule(
-        [int_rules, uint_rules, index_rules, fixed_rules, ufixed_rules, float_rules],
-        commutative=True,
+        [int_rules, uint_rules, index_rules, fixed_rules, ufixed_rules, float_rules]
     )
 
 
@@ -482,8 +501,11 @@ def mod_rule():
     )
 
 
-DUMMY_BINARY_ARITH_RULE = dummy_binary_arith_rule()
-print(_TYPING_RULE_CONFIG)
+HLS_ADD_SUB_RULE = add_sub_rule()
+HLS_MUL_RULE = mul_rule()
+HLS_DIV_RULE = div_rule()
+HLS_MOD_RULE = mod_rule()
+
 
 def type_compatible(types):
     """
@@ -528,7 +550,11 @@ class AddHandler(BuiltinHandler):
 
     @staticmethod
     def infer(*args):
-        return DUMMY_BINARY_ARITH_RULE(args[0], args[1])
+        rules = {
+            "default": DUMMY_BINARY_ARITH_RULE,
+            "hls": HLS_ADD_SUB_RULE,
+        }
+        return rules[_TYPING_RULE_CONFIG](args[0], args[1])
 
     def get_affine_expr(self, node: ast.Call, ivs: list, symbols: list):
         expr_l = self.builder.get_affine_expr(node.args[0], ivs, symbols)
@@ -566,7 +592,11 @@ class SubHandler(BuiltinHandler):
 
     @staticmethod
     def infer(*args):
-        return DUMMY_BINARY_ARITH_RULE(args[0], args[1])
+        rules = {
+            "default": DUMMY_BINARY_ARITH_RULE,
+            "hls": HLS_ADD_SUB_RULE,
+        }
+        return rules[_TYPING_RULE_CONFIG](args[0], args[1])
 
     def get_affine_expr(self, node: ast.Call, ivs: list, symbols: list):
         expr_l = self.builder.get_affine_expr(node.args[0], ivs, symbols)
@@ -604,7 +634,11 @@ class MultHandler(BuiltinHandler):
 
     @staticmethod
     def infer(*args):
-        return DUMMY_BINARY_ARITH_RULE(args[0], args[1])
+        rules = {
+            "default": DUMMY_BINARY_ARITH_RULE,
+            "hls": HLS_MUL_RULE,
+        }
+        return rules[_TYPING_RULE_CONFIG](args[0], args[1])
 
     def get_affine_expr(self, node: ast.Call, ivs: list, symbols: list):
         expr_l = self.builder.get_affine_expr(node.args[0], ivs, symbols)
@@ -649,7 +683,11 @@ class DivHandler(BuiltinHandler):
 
     @staticmethod
     def infer(*args):
-        return DUMMY_BINARY_ARITH_RULE(args[0], args[1])
+        rules = {
+            "default": DUMMY_BINARY_ARITH_RULE,
+            "hls": HLS_DIV_RULE,
+        }
+        return rules[_TYPING_RULE_CONFIG](args[0], args[1])
 
     def get_affine_expr(self, node: ast.Call, ivs: list, symbols: list):
         expr_l = self.builder.get_affine_expr(node.args[0], ivs, symbols)
@@ -674,7 +712,11 @@ class FloorDivHandler(BuiltinHandler):
 
     @staticmethod
     def infer(*args):
-        return DUMMY_BINARY_ARITH_RULE(args[0], args[1])
+        rules = {
+            "default": DUMMY_BINARY_ARITH_RULE,
+            "hls": HLS_DIV_RULE,
+        }
+        return rules[_TYPING_RULE_CONFIG](args[0], args[1])
 
     def get_affine_expr(self, node: ast.Call, ivs: list, symbols: list):
         expr_l = self.builder.get_affine_expr(node.args[0], ivs, symbols)
@@ -705,7 +747,11 @@ class ModHandler(BuiltinHandler):
 
     @staticmethod
     def infer(*args):
-        return DUMMY_BINARY_ARITH_RULE(args[0], args[1])
+        rules = {
+            "default": DUMMY_BINARY_ARITH_RULE,
+            "hls": HLS_MOD_RULE,
+        }
+        return rules[_TYPING_RULE_CONFIG](args[0], args[1])
 
     def get_affine_expr(self, node: ast.Call, ivs: list, symbols: list):
         expr_l = self.builder.get_affine_expr(node.args[0], ivs, symbols)
@@ -718,6 +764,11 @@ class ModHandler(BuiltinHandler):
 ##################################################
 # Binary Comparison Operations
 ##################################################
+
+
+# =======================================================================
+# Default rules
+# =======================================================================
 def dummy_comparison_rule():
     # [NOTE]: the return type is always bool (currently using i1)
     int_rules = {
@@ -857,6 +908,102 @@ def dummy_comparison_rule():
 DUMMY_COMPARISON_RULE = dummy_comparison_rule()
 
 
+# =======================================================================
+# HLS rules
+# =======================================================================
+def cmp_rule():
+    int_rules = {
+        (Int, Int): lambda t1, t2: Int(max(t1.bits, t2.bits)),
+        (Int, UInt): lambda t1, t2: Int(max(t1.bits, t2.bits + 1)),
+        (Int, Index): lambda t1, t2: Int(max(t1.bits, t2.bits + 1)),
+        (Int, Fixed): lambda t1, t2: Fixed(
+            max(t1.bits, t2.bits - t2.fracs) + t2.fracs, t2.fracs
+        ),
+        (Int, UFixed): lambda t1, t2: Fixed(
+            max(t1.bits, t2.bits - t2.fracs + 1) + t2.fracs, t2.fracs
+        ),
+        (Int, Float): lambda t1, t2: t2,
+    }
+    uint_rules = {
+        (UInt, Int): lambda t1, t2: Int(max(t1.bits + 1, t2.bits)),
+        (UInt, UInt): lambda t1, t2: UInt(max(t1.bits, t2.bits)),
+        (UInt, Index): lambda t1, t2: UInt(max(t1.bits, t2.bits)),
+        (UInt, Fixed): lambda t1, t2: Fixed(
+            max(t1.bits + 1, t2.bits - t2.fracs) + t2.fracs, t2.fracs
+        ),
+        (UInt, UFixed): lambda t1, t2: UFixed(
+            max(t1.bits, t2.bits - t2.fracs) + t2.fracs, t2.fracs
+        ),
+        (UInt, Float): lambda t1, t2: t2,
+    }
+    index_rules = {
+        (Index, Int): lambda t1, t2: Int(max(t1.bits + 1, t2.bits)),
+        (Index, UInt): lambda t1, t2: UInt(max(t1.bits, t2.bits)),
+        (Index, Index): lambda t1, t2: Index(),
+        (Index, Fixed): lambda t1, t2: Fixed(
+            max(t1.bits + 1, t2.bits - t2.fracs) + t2.fracs, t2.fracs
+        ),
+        (Index, UFixed): lambda t1, t2: UFixed(
+            max(t1.bits, t2.bits - t2.fracs) + t2.fracs, t2.fracs
+        ),
+        (Index, Float): lambda t1, t2: t2,
+    }
+    fixed_rules = {
+        (Fixed, Int): lambda t1, t2: Fixed(
+            max(t1.bits - t1.fracs, t2.bits) + t1.fracs, t1.fracs
+        ),
+        (Fixed, UInt): lambda t1, t2: Fixed(
+            max(t1.bits - t1.fracs, t2.bits + 1) + t1.fracs, t1.fracs
+        ),
+        (Fixed, Index): lambda t1, t2: Fixed(
+            max(t1.bits - t1.fracs, t2.bits + 1) + t1.fracs, t1.fracs
+        ),
+        (Fixed, Fixed): lambda t1, t2: Fixed(
+            max(t1.bits - t1.fracs, t2.bits - t2.fracs) + max(t1.fracs, t2.fracs),
+            max(t1.fracs, t2.fracs),
+        ),
+        (Fixed, UFixed): lambda t1, t2: Fixed(
+            max(t1.bits - t1.fracs, t2.bits - t2.fracs + 1) + max(t1.fracs, t2.fracs),
+            max(t1.fracs, t2.fracs),
+        ),
+        (Fixed, Float): lambda t1, t2: t2,
+    }
+    ufixed_rules = {
+        (UFixed, Int): lambda t1, t2: Fixed(
+            max(t1.bits - t1.fracs + 1, t2.bits) + t1.fracs, t1.fracs
+        ),
+        (UFixed, UInt): lambda t1, t2: UFixed(
+            max(t1.bits - t1.fracs, t2.bits) + t1.fracs, t1.fracs
+        ),
+        (UFixed, Index): lambda t1, t2: UFixed(
+            max(t1.bits - t1.fracs, t2.bits) + t1.fracs, t1.fracs
+        ),
+        (UFixed, Fixed): lambda t1, t2: Fixed(
+            max(t1.bits - t1.fracs + 1, t2.bits - t2.fracs) + max(t1.fracs, t2.fracs),
+            max(t1.fracs, t2.fracs),
+        ),
+        (UFixed, UFixed): lambda t1, t2: UFixed(
+            max(t1.bits - t1.fracs, t2.bits - t2.fracs) + max(t1.fracs, t2.fracs),
+            max(t1.fracs, t2.fracs),
+        ),
+        (UFixed, Float): lambda t1, t2: t2,
+    }
+    float_rules = {
+        (Float, Int): lambda t1, t2: t1,
+        (Float, UInt): lambda t1, t2: t1,
+        (Float, Index): lambda t1, t2: t1,
+        (Float, Fixed): lambda t1, t2: t1,
+        (Float, UFixed): lambda t1, t2: t1,
+        (Float, Float): lambda t1, t2: t1 if t1.bits >= t2.bits else t2,
+    }
+    return TypingRule(
+        [int_rules, uint_rules, index_rules, fixed_rules, ufixed_rules, float_rules],
+    )
+
+
+HLS_CMP_RULE = cmp_rule()
+
+
 @register_builtin_handler("Eq")
 class EqHandler(BuiltinHandler):
     # - equal (mnemonic: `"eq"`; integer value: `0`)
@@ -882,7 +1029,11 @@ class EqHandler(BuiltinHandler):
 
     @staticmethod
     def infer(*args):
-        return DUMMY_COMPARISON_RULE(args[0], args[1])
+        rules = {
+            "default": DUMMY_COMPARISON_RULE,
+            "hls": HLS_CMP_RULE,
+        }
+        return rules[_TYPING_RULE_CONFIG](args[0], args[1])
 
 
 @register_builtin_handler("NotEq")
@@ -910,7 +1061,11 @@ class NotEqHandler(BuiltinHandler):
 
     @staticmethod
     def infer(*args):
-        return DUMMY_COMPARISON_RULE(args[0], args[1])
+        rules = {
+            "default": DUMMY_COMPARISON_RULE,
+            "hls": HLS_CMP_RULE,
+        }
+        return rules[_TYPING_RULE_CONFIG](args[0], args[1])
 
 
 # Less than
@@ -943,7 +1098,11 @@ class LtHandler(BuiltinHandler):
 
     @staticmethod
     def infer(*args):
-        return DUMMY_COMPARISON_RULE(args[0], args[1])
+        rules = {
+            "default": DUMMY_COMPARISON_RULE,
+            "hls": HLS_CMP_RULE,
+        }
+        return rules[_TYPING_RULE_CONFIG](args[0], args[1])
 
 
 # Less than or equal
@@ -976,7 +1135,11 @@ class LtEHandler(BuiltinHandler):
 
     @staticmethod
     def infer(*args):
-        return DUMMY_COMPARISON_RULE(args[0], args[1])
+        rules = {
+            "default": DUMMY_COMPARISON_RULE,
+            "hls": HLS_CMP_RULE,
+        }
+        return rules[_TYPING_RULE_CONFIG](args[0], args[1])
 
 
 # Greater than
@@ -1009,7 +1172,11 @@ class GtHandler(BuiltinHandler):
 
     @staticmethod
     def infer(*args):
-        return DUMMY_COMPARISON_RULE(args[0], args[1])
+        rules = {
+            "default": DUMMY_COMPARISON_RULE,
+            "hls": HLS_CMP_RULE,
+        }
+        return rules[_TYPING_RULE_CONFIG](args[0], args[1])
 
 
 # Greater than or equal
@@ -1042,4 +1209,8 @@ class GtEHandler(BuiltinHandler):
 
     @staticmethod
     def infer(*args):
-        return DUMMY_COMPARISON_RULE(args[0], args[1])
+        rules = {
+            "default": DUMMY_COMPARISON_RULE,
+            "hls": HLS_CMP_RULE,
+        }
+        return rules[_TYPING_RULE_CONFIG](args[0], args[1])

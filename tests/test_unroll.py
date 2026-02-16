@@ -25,6 +25,7 @@ def test_shard_1D_1():
     s(np_A, np_B)
     assert np.array_equal(np_A, np_B)
 
+
 def test_shard_1D_2():
     @spmw.unit()
     def top(A: int32[1024], B: int32[1024]):
@@ -37,6 +38,7 @@ def test_shard_1D_2():
     np_B = np.zeros((1024,), dtype=np.int32)
     s(np_A, np_B)
     assert np.array_equal(np_A + 1, np_B)
+
 
 def test_shard_1D_3():
     @spmw.unit()
@@ -51,9 +53,10 @@ def test_shard_1D_3():
     np_B = np.zeros((1024,), dtype=np.int32)
     gold = np_A.copy()
     for i in range(4):
-        gold[256*i:256*(i+1)] += i
+        gold[256 * i : 256 * (i + 1)] += i
     s(np_A, np_B)
     assert np.array_equal(gold, np_B)
+
 
 def test_shard_1D_4():
     @spmw.unit()
@@ -72,9 +75,10 @@ def test_shard_1D_4():
     gold = np_A.copy()
     for i in range(4):
         if i > 1:
-            gold[256*i:256*(i+1)] += i
+            gold[256 * i : 256 * (i + 1)] += i
     s(np_A, np_B)
     assert np.array_equal(gold, np_B)
+
 
 def test_scalar_stream():
     @spmw.unit()

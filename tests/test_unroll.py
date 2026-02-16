@@ -12,7 +12,7 @@ S = Layout.Shard
 R = Layout.Replicate
 
 
-def test_shard_1D():
+def test_shard_1D_1():
     @spmw.unit()
     def top(A: int32[1024], B: int32[1024]):
         @spmw.work(mapping=[4], inputs=[A], outputs=[B])
@@ -25,6 +25,56 @@ def test_shard_1D():
     s(np_A, np_B)
     assert np.array_equal(np_A, np_B)
 
+def test_shard_1D_2():
+    @spmw.unit()
+    def top(A: int32[1024], B: int32[1024]):
+        @spmw.work(mapping=[4], inputs=[A], outputs=[B])
+        def core(local_A: int32[1024] @ [S(0)], local_B: int32[1024] @ [S(0)]):
+            local_B[:] = local_A + 1
+
+    s = parse(top)
+    np_A = np.random.randint(0, 100, (1024,), dtype=np.int32)
+    np_B = np.zeros((1024,), dtype=np.int32)
+    s(np_A, np_B)
+    assert np.array_equal(np_A + 1, np_B)
+
+def test_shard_1D_3():
+    @spmw.unit()
+    def top(A: int32[1024], B: int32[1024]):
+        @spmw.work(mapping=[4], inputs=[A], outputs=[B])
+        def core(local_A: int32[1024] @ [S(0)], local_B: int32[1024] @ [S(0)]):
+            pi = spmw.get_wid()
+            local_B[:] = local_A + pi
+
+    s = parse(top)
+    np_A = np.random.randint(0, 100, (1024,), dtype=np.int32)
+    np_B = np.zeros((1024,), dtype=np.int32)
+    gold = np_A.copy()
+    for i in range(4):
+        gold[256*i:256*(i+1)] += i
+    s(np_A, np_B)
+    assert np.array_equal(gold, np_B)
+
+def test_shard_1D_4():
+    @spmw.unit()
+    def top(A: int32[1024], B: int32[1024]):
+        @spmw.work(mapping=[4], inputs=[A], outputs=[B])
+        def core(local_A: int32[1024] @ [S(0)], local_B: int32[1024] @ [S(0)]):
+            pi = spmw.get_wid()
+            if pi > 1:
+                local_B[:] = local_A + pi
+            else:
+                local_B[:] = local_A
+
+    s = parse(top)
+    np_A = np.random.randint(0, 100, (1024,), dtype=np.int32)
+    np_B = np.zeros((1024,), dtype=np.int32)
+    gold = np_A.copy()
+    for i in range(4):
+        if i > 1:
+            gold[256*i:256*(i+1)] += i
+    s(np_A, np_B)
+    assert np.array_equal(gold, np_B)
 
 def test_scalar_stream():
     @spmw.unit()
@@ -113,7 +163,10 @@ def test_stream_array():
 
 
 if __name__ == "__main__":
-    test_shard_1D()
+    test_shard_1D_1()
+    test_shard_1D_2()
+    test_shard_1D_3()
+    test_shard_1D_4()
     # test_scalar_stream()
     # test_tensor_stream()
     # test_stream_array()

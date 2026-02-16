@@ -1,6 +1,7 @@
 # Copyright Allo authors. All Rights Reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import numpy as np
 from src.parse import parse
 import allo
 from allo.ir.types import int32, Stream
@@ -16,13 +17,13 @@ def test_shard_1D():
     def top(A: int32[1024], B: int32[1024]):
         @spmw.work(mapping=[4], inputs=[A], outputs=[B])
         def core(local_A: int32[1024] @ [S(0)], local_B: int32[1024] @ [S(0)]):
-            pi = spmw.get_wid()
-            if pi > 1:
-                local_B[:] = local_A + pi
-            else:
-                local_B[:] = local_A - pi
+            local_B[:] = local_A
 
     s = parse(top)
+    np_A = np.random.randint(0, 100, (1024,), dtype=np.int32)
+    np_B = np.zeros((1024,), dtype=np.int32)
+    s(np_A, np_B)
+    assert np.array_equal(np_A, np_B)
 
 
 def test_scalar_stream():

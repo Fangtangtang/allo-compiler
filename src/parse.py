@@ -5,6 +5,7 @@ import json
 from typing import Union
 import numpy as np
 from collections.abc import Callable
+from collections import defaultdict
 from .ir.utils import SymbolTable, get_global_vars
 from .ir.ast_processor import ASTProcessor
 from .ir.ir_builder import IRBuilder
@@ -27,6 +28,8 @@ from allo._mlir.dialects import (
 )
 from allo._mlir.passmanager import PassManager as mlir_pass_manager
 from allo.memory import Layout
+from allo.backend.aie import AIE_MLIRModule
+from allo.backend.aie.utils import Argument
 
 
 def get_shard(dims):
@@ -135,22 +138,30 @@ def parse(fn: Union[Callable, str], instantiate: list = None):
                         spec_list=[Layout(tensor["shard"])],
                         tile_shape=tuple(operand.type.shape),
                         is_input=tensor["is_input"],
-                        id=tensor["id"],
+                        id_=tensor["id"],
                     )
                     dtensors[sub_op.callee.value].append(dtensor)
 
     with context as ctx, Location.unknown():
         mod = Module.create()
-
+    func_instances = defaultdict(dict)
+    core_func_args = defaultdict(dict)
     with InsertionPoint(mod.body), Location.unknown():
         for mesh_name, grid_info in work_grids.items():
             grid_shape = grid_info["grid"]
             orig_func = symbol_map[grid_info["work"]]
+            orig_func_name = grid_info["work"]
             for dim in np.ndindex(*grid_shape):
                 func = orig_func.clone()
-                func.sym_name = StringAttr.get(
-                    construct_kernel_name(grid_info["work"], dim)
-                )
+                function_name = construct_kernel_name(grid_info["work"], dim)
+                func.sym_name = StringAttr.get(function_name)
+                func.attributes["tag"] = func.sym_name
+                func_instances[orig_func_name][dim] = function_name
+                for i, dtensor in enumerate(dtensors[orig_func_name]):
+                    core_func_args[function_name][i] = (
+                        Argument(dtensor, None),
+                        dtensor.is_input,
+                    )
                 for func_block in func.body:
                     for op in func_block.operations:
                         assert isinstance(
@@ -176,3 +187,13 @@ def parse(fn: Union[Callable, str], instantiate: list = None):
 
     with open("simplified_module.mlir", "w") as f:
         f.write(str(mod))
+
+    aie_mod = AIE_MLIRModule(mod, project_dir="top.prj", func_instances=func_instances)
+    global_dtensors = {}
+    for dtensor_list in dtensors.values():
+        for dt in dtensor_list:
+            global_dtensors[dt.global_id] = dt
+
+    aie_mod.init_spmw(core_func_args, global_dtensors)
+    aie_mod.build(skip=True)
+    return aie_mod

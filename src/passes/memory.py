@@ -16,12 +16,12 @@ class DTensor:
         spec_list,
         tile_shape: list,
         is_input: bool,
-        id: int,
+        id_: int,
     ):
         self.mapping = mapping  # mesh dims
         self.shape = shape  # tensor shape
         self.dtype = dtype
-        self.global_id: int = id
+        self.global_id: int = id_
         self.is_input: bool = is_input
         self.tile_shape = tile_shape
 
@@ -156,3 +156,6 @@ class DTensor:
             ]
         )
         return f"DTensor({', '.join(parts)})"
+
+    def __repr__(self):
+        return str(self.global_id)

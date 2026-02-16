@@ -9,6 +9,7 @@ from .ir.utils import SymbolTable, get_global_vars
 from .ir.ast_processor import ASTProcessor
 from .ir.ir_builder import IRBuilder
 from allo.backend.llvm import LLVMModule
+from allo.backend.hls import HLSModule
 from allo.backend.simulator import LLVMOMPModule
 
 
@@ -48,8 +49,18 @@ def process_spmw(fn: Union[Callable, str], instantiate: list = None):
     print(module)
 
 
-def simulate(fn: Union[Callable, str], instantiate: list = None):
-    """
-    Simulate SPMW program using Allo's simulator
-    """
-    module, top_name = build(fn, instantiate)
+def to_hls(fn: Union[Callable, str], instantiate: list = None):
+    module, top_name = build(fn, instantiate, "hls")
+    print(module)
+    func_args = {}
+    mod = HLSModule(
+        module,
+        top_func_name=top_name,
+        platform="vitis_hls",
+        mode="sw_emu",
+        ext_libs=[],
+        func_args=func_args,
+        wrap_io=True,
+    )
+
+    return mod

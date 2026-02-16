@@ -8,15 +8,37 @@ from collections.abc import Callable
 from .ir.utils import SymbolTable, get_global_vars
 from .ir.ast_processor import ASTProcessor
 from .ir.ir_builder import IRBuilder
+from .passes.memory import DTensor
 from allo.utils import register_dialect, construct_kernel_name
-from allo._mlir.ir import Module, Context, Location, InsertionPoint, StringAttr
+from allo._mlir.ir import (
+    Module,
+    Context,
+    Location,
+    InsertionPoint,
+    StringAttr,
+    BlockArgument,
+)
 from allo._mlir.dialects import (
     allo as allo_d,
     arith as arith_d,
     func as func_d,
+    memref as memref_d,
     sdy as sdy_d,
 )
 from allo._mlir.passmanager import PassManager as mlir_pass_manager
+from allo.memory import Layout
+
+
+def get_shard(dims):
+    shard = []
+    for x in dims:
+        axes = sdy_d.DimensionShardingAttr(x).axes
+        if len(axes) == 0:
+            shard.append(Layout.Replicate)
+        else:
+            assert len(axes) == 1
+            shard.append(Layout.Shard(int(sdy_d.AxisRefAttr(axes[0]).name)))
+    return shard
 
 
 def parse(fn: Union[Callable, str], instantiate: list = None):
@@ -46,6 +68,7 @@ def parse(fn: Union[Callable, str], instantiate: list = None):
 
     top_module = symbol_map[top_name]
     work_grids = {}
+    dtensors = {}
     for func_block in top_module.body:
         for op in func_block.operations:
             if isinstance(op, sdy_d.ManualComputationOp):
@@ -53,19 +76,41 @@ def parse(fn: Union[Callable, str], instantiate: list = None):
                 in_shardings = sdy_d.TensorShardingPerValueAttr(
                     op.in_shardings
                 ).shardings
-                for shard in in_shardings:
+                tensors = []
+                assert len(op.tensors) == len(in_shardings)
+                for shard, tensor in zip(in_shardings, op.tensors):
                     shard = sdy_d.TensorShardingAttr(shard)
                     mesh = shard.mesh_or_ref
+                    arg = BlockArgument(tensor.owner.buffer)
                     dims = shard.dimension_shardings
-                    # print(dims) # TODO: parse dim
+                    tensors.append(
+                        {
+                            "id": arg.arg_number,
+                            "type": arg.type,
+                            "shard": get_shard(dims),
+                            "is_input": True,
+                        }
+                    )
                 out_shardings = sdy_d.TensorShardingPerValueAttr(
                     op.out_shardings
                 ).shardings
-                for shard in out_shardings:
+                assert len(op.results) == len(out_shardings)
+                for shard, tensor in zip(out_shardings, op.results):
                     shard = sdy_d.TensorShardingAttr(shard)
                     mesh = shard.mesh_or_ref
                     dims = shard.dimension_shardings
-                    # print(dims) # TODO: parse dim
+                    for use in tensor.uses:
+                        for use in use.owner.result.uses:
+                            assert isinstance(use.owner, memref_d.CopyOp)
+                            arg = BlockArgument(use.owner.operands[1])
+                    tensors.append(
+                        {
+                            "id": arg.arg_number,
+                            "type": arg.type,
+                            "shard": get_shard(dims),
+                            "is_input": False,
+                        }
+                    )
                 mesh_op = symbol_map[mesh.value]
                 mesh_attr = sdy_d.MeshAttr(mesh_op.mesh)
                 mesh_map = {}
@@ -81,6 +126,18 @@ def parse(fn: Union[Callable, str], instantiate: list = None):
                                 "work": sub_op.callee.value,
                             }
                             break
+                dtensors[sub_op.callee.value] = []
+                for tensor, operand in zip(tensors, sub_op.operands_):
+                    dtensor = DTensor(
+                        mapping=grid,
+                        shape=tuple(tensor["type"].shape),
+                        dtype=tensor["type"].element_type,
+                        spec_list=[Layout(tensor["shard"])],
+                        tile_shape=tuple(operand.type.shape),
+                        is_input=tensor["is_input"],
+                        id=tensor["id"],
+                    )
+                    dtensors[sub_op.callee.value].append(dtensor)
 
     with context as ctx, Location.unknown():
         mod = Module.create()

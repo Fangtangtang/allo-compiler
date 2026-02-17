@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import numpy as np
-from src.parse import parse
+from src.parse import parse, to_aie
 import allo
 from allo.ir.types import int32, Stream
 from allo import spmw
@@ -19,7 +19,7 @@ def test_shard_1D_1():
         def core(local_A: int32[1024] @ [S(0)], local_B: int32[1024] @ [S(0)]):
             local_B[:] = local_A
 
-    s = parse(top)
+    s = to_aie(top)
     np_A = np.random.randint(0, 100, (1024,), dtype=np.int32)
     np_B = np.zeros((1024,), dtype=np.int32)
     s(np_A, np_B)
@@ -33,7 +33,7 @@ def test_shard_1D_2():
         def core(local_A: int32[1024] @ [S(0)], local_B: int32[1024] @ [S(0)]):
             local_B[:] = local_A + 1
 
-    s = parse(top)
+    s = to_aie(top)
     np_A = np.random.randint(0, 100, (1024,), dtype=np.int32)
     np_B = np.zeros((1024,), dtype=np.int32)
     s(np_A, np_B)
@@ -48,7 +48,7 @@ def test_shard_1D_3():
             pi = spmw.get_wid()
             local_B[:] = local_A + pi
 
-    s = parse(top)
+    s = to_aie(top)
     np_A = np.random.randint(0, 100, (1024,), dtype=np.int32)
     np_B = np.zeros((1024,), dtype=np.int32)
     gold = np_A.copy()
@@ -69,7 +69,7 @@ def test_shard_1D_4():
             else:
                 local_B[:] = local_A
 
-    s = parse(top)
+    s = to_aie(top)
     np_A = np.random.randint(0, 100, (1024,), dtype=np.int32)
     np_B = np.zeros((1024,), dtype=np.int32)
     gold = np_A.copy()
@@ -80,7 +80,7 @@ def test_shard_1D_4():
     assert np.array_equal(gold, np_B)
 
 
-def test_scalar_stream():
+def test_scalar_stream_1():
     @spmw.unit()
     def top1(A: int32[16, 16], B: int32[16, 16]):
         pipe: Stream[int32]
@@ -95,6 +95,8 @@ def test_scalar_stream():
 
     s = parse(top1)
 
+
+def test_scalar_stream_2():
     @spmw.unit()
     def top2(A: int32[16, 16], B: int32[16, 16]):
         pipe: Stream[int32]
@@ -167,10 +169,11 @@ def test_stream_array():
 
 
 if __name__ == "__main__":
-    test_shard_1D_1()
-    test_shard_1D_2()
-    test_shard_1D_3()
-    test_shard_1D_4()
-    # test_scalar_stream()
+    # test_shard_1D_1()
+    # test_shard_1D_2()
+    # test_shard_1D_3()
+    # test_shard_1D_4()
+    test_scalar_stream_1()
+    # test_scalar_stream_2()
     # test_tensor_stream()
     # test_stream_array()

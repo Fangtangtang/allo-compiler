@@ -188,6 +188,11 @@ def parse(fn: Union[Callable, str], instantiate: list = None):
     with open("simplified_module.mlir", "w") as f:
         f.write(str(mod))
 
+    return mod, func_instances, core_func_args, dtensors
+
+
+def to_aie(fn: Union[Callable, str], instantiate: list = None):
+    mod, func_instances, core_func_args, dtensors = parse(fn, instantiate)
     aie_mod = AIE_MLIRModule(mod, project_dir="top.prj", func_instances=func_instances)
     global_dtensors = {}
     for dtensor_list in dtensors.values():

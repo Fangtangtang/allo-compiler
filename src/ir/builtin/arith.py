@@ -5,6 +5,7 @@ import ast
 import numpy as np
 from .handler import BuiltinHandler, register_builtin_handler, TypingRule
 from ..config import get_typing_rule_config
+from allo._mlir.extras.dialects.affine import AffExpr
 from allo._mlir.dialects import (
     allo as allo_d,
     arith as arith_d,
@@ -747,7 +748,7 @@ class AddHandler(BuiltinHandler):
         expr_l = self.builder.get_affine_expr(node.args[0], ivs, symbols)
         expr_r = self.builder.get_affine_expr(node.args[1], ivs, symbols)
         if expr_l and expr_r:
-            return expr_l + expr_r
+            return AffExpr.add(expr_l, expr_r)
         return None
 
 
@@ -789,7 +790,7 @@ class SubHandler(BuiltinHandler):
         expr_l = self.builder.get_affine_expr(node.args[0], ivs, symbols)
         expr_r = self.builder.get_affine_expr(node.args[1], ivs, symbols)
         if expr_l and expr_r:
-            return expr_l - expr_r
+            return AffExpr.sub(expr_l, expr_r)
         return None
 
 
@@ -834,7 +835,7 @@ class MultHandler(BuiltinHandler):
             if isinstance(expr_l, AffineConstantExpr) or isinstance(
                 expr_r, AffineConstantExpr
             ):
-                return expr_l * expr_r
+                return AffExpr.mul(expr_l, expr_r)
         return None
 
 
@@ -880,7 +881,7 @@ class DivHandler(BuiltinHandler):
         expr_l = self.builder.get_affine_expr(node.args[0], ivs, symbols)
         expr_r = self.builder.get_affine_expr(node.args[1], ivs, symbols)
         if expr_l and expr_r and isinstance(expr_r, AffineConstantExpr):
-            return AffineExpr.get_floor_div(expr_l, expr_r)
+            return AffExpr.div(expr_l, expr_r)
         return None
 
 
@@ -909,7 +910,7 @@ class FloorDivHandler(BuiltinHandler):
         expr_l = self.builder.get_affine_expr(node.args[0], ivs, symbols)
         expr_r = self.builder.get_affine_expr(node.args[1], ivs, symbols)
         if expr_l and expr_r and isinstance(expr_r, AffineConstantExpr):
-            return AffineExpr.get_floor_div(expr_l, expr_r)
+            return AffExpr.div(expr_l, expr_r)
         return None
 
 
@@ -944,7 +945,7 @@ class ModHandler(BuiltinHandler):
         expr_l = self.builder.get_affine_expr(node.args[0], ivs, symbols)
         expr_r = self.builder.get_affine_expr(node.args[1], ivs, symbols)
         if expr_l and expr_r and isinstance(expr_r, AffineConstantExpr):
-            return expr_l % expr_r
+            return AffExpr.mod(expr_l, expr_r)
         return None
 
 

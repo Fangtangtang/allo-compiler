@@ -4,8 +4,9 @@
 import ast
 from contextlib import contextmanager
 import allo._mlir.extras.types as mlir_types
+from allo._mlir.extras.dialects.affine import AffExpr
+import allo._mlir.extras.dialects.sdy as sdy
 from allo._mlir.dialects import (
-    allo as allo_d,
     bufferization as buf_d,
     func as func_d,
     memref as memref_d,
@@ -29,8 +30,6 @@ from allo._mlir.ir import (
     IntegerAttr,
     StringAttr,
     DictAttr,
-    AffineExpr,
-    AffineConstantExpr,
     AffineMap,
     AffineMapAttr,
     IntegerSet,
@@ -244,16 +243,16 @@ class IRBuilder(ast.NodeVisitor):
         [NOTE]: not suppose to build operations in the function, useless you think having some extra unused values are acceptable.
         """
         if isinstance(node, ast.Constant):
-            return AffineConstantExpr.get(node.value)
+            return AffExpr.constant(node.value)
         if isinstance(node, ast.Name):
             if node.id in self.reserved_bindings:
                 var = self.reserved_bindings[node.id]
                 symbols.append(var)
-                return AffineExpr.get_symbol(len(symbols) - 1)
+                return AffExpr.symbol(len(symbols) - 1)
             var = self.get_symbol(node.id)
             if isinstance(var, MockArg) and var.is_affine:
                 ivs.append(var.result)
-                return AffineExpr.get_dim(len(ivs) - 1)
+                return AffExpr.dim(len(ivs) - 1)
         if isinstance(node, ast.Call):
             if isinstance(node.func, ast.Attribute) and isinstance(
                 node.func.value, ast.Name
@@ -594,17 +593,10 @@ class IRBuilder(ast.NodeVisitor):
             )  # TODO:unsigned
             types.append(t_type)
             shards.append(
-                sdy_d.TensorShardingAttr.get(
+                sdy.tensor_sharding(
                     mesh_name,
                     [
-                        sdy_d.DimensionShardingAttr.get(
-                            axes=(
-                                [sdy_d.AxisRefAttr.get(name=f"{p.axis}")]
-                                if isinstance(p, Layout.Shard)
-                                else []
-                            ),
-                            is_closed=True,
-                        )
+                        p.axis if isinstance(p, Layout.Shard) else -1
                         for p in spec.partitions
                     ],
                 )
@@ -626,11 +618,7 @@ class IRBuilder(ast.NodeVisitor):
                 outputs = [self.get_op_result(self.visit(e)) for e in kw.value.elts]
         # create work grid in global scope
         with self.get_global_ip():
-            axes = [sdy_d.MeshAxisAttr.get(f"{i}", dim) for i, dim in enumerate(grid)]
-            mesh = sdy_d.mesh(
-                sym_name=self.symbol_table.mangle_grid_name(callee_name),
-                mesh=sdy_d.MeshAttr.get(axes),
-            )
+            mesh = sdy.mesh(self.symbol_table.mangle_grid_name(callee_name), grid)
         results = [
             mlir_types.tensor(*o.type.shape, element_type=o.type.element_type)
             for o in outputs
@@ -641,16 +629,10 @@ class IRBuilder(ast.NodeVisitor):
         output_types, out_shard = self.visit_work_interface(
             mesh.sym_name.value, callee.args.args[len(inputs) :], False
         )
-        comp_op = sdy_d.ManualComputationOp(
-            results,
-            inputs,
-            sdy_d.TensorShardingPerValueAttr.get(in_shard),
-            sdy_d.TensorShardingPerValueAttr.get(out_shard),
-            sdy_d.ManualAxesAttr.get(
-                [StringAttr.get(f"{i}") for i in range(len(grid))]
-            ),
-            ip=self.get_ip(),
-        )
+        with self.get_ip():
+            comp_op = sdy.manual_computation(
+                results, inputs, in_shard, out_shard, len(grid)
+            )
         block = comp_op.body.blocks.append(*local_types)
         self.set_ip(block)
         # convert inputs to buffer

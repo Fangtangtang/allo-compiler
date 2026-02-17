@@ -3,11 +3,9 @@
 
 import ast
 from .handler import BuiltinHandler, register_builtin_handler
-from allo._mlir.dialects import (
-    arith as arith_d,
-    func as func_d,
-)
-from allo._mlir.ir import FlatSymbolRefAttr, StringAttr
+import allo._mlir.extras.types as mlir_types
+from allo._mlir.dialects import func as func_d
+from allo._mlir.ir import FlatSymbolRefAttr, StringAttr, FunctionType
 
 
 @register_builtin_handler("get_wid")
@@ -20,8 +18,8 @@ class WidHandler(BuiltinHandler):
         grid_name = self.builder.symbol_table.mangle_grid_name(callee)
         builtin_func = f"{grid_name}_get_wid"
         # insert function declaration in global
-        results = [arith_d.IndexType.get()] * num
-        func_type = func_d.FunctionType.get([], results)
+        results = [mlir_types.index()] * num
+        func_type = FunctionType.get([], results)
         kernel = func_d.FuncOp(builtin_func, func_type, ip=self.builder.get_global_ip())
         kernel.attributes["sym_visibility"] = StringAttr.get("private")
         # call function in work

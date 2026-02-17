@@ -4,6 +4,7 @@
 import ast
 import numpy
 from .handler import BuiltinHandler, register_builtin_handler
+import allo._mlir.extras.types as mlir_types
 from allo._mlir.dialects import (
     arith as arith_d,
     allo as allo_d,
@@ -12,7 +13,6 @@ from allo._mlir.dialects import (
 )
 from allo._mlir.ir import (
     InsertionPoint,
-    IntegerType,
     UnitAttr,
     AffineExpr,
     AffineMap,
@@ -452,17 +452,13 @@ class FloatToIndexCastHandler(CastHandler):
         mlir_type, _ = self.get_result_type(node)
         # FP -> UI -> Index
         if len(getattr(mlir_type, "shape", [])) == 0:
-            op = arith_d.FPToUIOp(
-                IntegerType.get_signless(32), val, ip=self.builder.get_ip()
-            )
+            op = arith_d.FPToUIOp(mlir_types.i(32), val, ip=self.builder.get_ip())
             return arith_d.IndexCastOp(mlir_type, op.result, ip=self.builder.get_ip())
         else:
             op, generic_block = self.get_generic_wrapper(val, mlir_type)
             with InsertionPoint(generic_block):
                 # add cast op to block
-                value = arith_d.FPToUIOp(
-                    IntegerType.get_signless(32), generic_block.arguments[0]
-                )
+                value = arith_d.FPToUIOp(mlir_types.i(32), generic_block.arguments[0])
                 yield_value = arith_d.IndexCastOp(mlir_type.element_type, value)
                 linalg_d.YieldOp([yield_value])
             return op
@@ -475,16 +471,14 @@ class IndexToFloatCastHandler(CastHandler):
         mlir_type, _ = self.get_result_type(node)
         # Index -> SI -> FP
         if len(getattr(mlir_type, "shape", [])) == 0:
-            op = arith_d.IndexCastOp(
-                IntegerType.get_signless(32), val, ip=self.builder.get_ip()
-            )
+            op = arith_d.IndexCastOp(mlir_types.i(32), val, ip=self.builder.get_ip())
             return arith_d.SIToFPOp(mlir_type, op.result, ip=self.builder.get_ip())
         else:
             op, generic_block = self.get_generic_wrapper(val, mlir_type)
             with InsertionPoint(generic_block):
                 # add cast op to block
                 value = arith_d.IndexCastOp(
-                    IntegerType.get_signless(32), generic_block.arguments[0]
+                    mlir_types.i(32), generic_block.arguments[0]
                 )
                 yield_value = arith_d.SIToFPOp(mlir_type.element_type, value)
                 linalg_d.YieldOp([yield_value])
@@ -497,9 +491,7 @@ class IndexToFixedCastHandler(CastHandler):
         val = self.get_operand(node)
         mlir_type, is_unsigned = self.get_result_type(node)
         if len(getattr(mlir_type, "shape", [])) == 0:
-            op = arith_d.IndexCastOp(
-                IntegerType.get_signless(32), val, ip=self.builder.get_ip()
-            )
+            op = arith_d.IndexCastOp(mlir_types.i(32), val, ip=self.builder.get_ip())
             op = allo_d.IntToFixedOp(mlir_type, op.result, ip=self.builder.get_ip())
             if is_unsigned:
                 op.attributes["unsigned"] = UnitAttr.get()
@@ -509,7 +501,7 @@ class IndexToFixedCastHandler(CastHandler):
             with InsertionPoint(generic_block):
                 # add cast op to block
                 value = arith_d.IndexCastOp(
-                    IntegerType.get_signless(32), generic_block.arguments[0]
+                    mlir_types.i(32), generic_block.arguments[0]
                 )
                 yield_value = allo_d.IntToFixedOp(mlir_type.element_type, value)
                 if is_unsigned:
@@ -524,16 +516,14 @@ class FixedToIndexCastHandler(CastHandler):
         val = self.get_operand(node)
         mlir_type, _ = self.get_result_type(node)
         if len(getattr(mlir_type, "shape", [])) == 0:  # scalar
-            op = allo_d.FixedToIntOp(
-                IntegerType.get_signless(32), val, ip=self.builder.get_ip()
-            )
+            op = allo_d.FixedToIntOp(mlir_types.i(32), val, ip=self.builder.get_ip())
             return arith_d.IndexCastOp(mlir_type, op.result, ip=self.builder.get_ip())
         else:  # tensor (memref)
             op, generic_block = self.get_generic_wrapper(val, mlir_type)
             with InsertionPoint(generic_block):
                 # add cast op to block
                 value = allo_d.FixedToIntOp(
-                    IntegerType.get_signless(32), generic_block.arguments[0]
+                    mlir_types.i(32), generic_block.arguments[0]
                 )
                 yield_value = arith_d.IndexCastOp(mlir_type.element_type, value)
                 linalg_d.YieldOp([yield_value])

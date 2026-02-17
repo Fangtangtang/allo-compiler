@@ -11,6 +11,7 @@ from .ir.ast_processor import ASTProcessor
 from .ir.ir_builder import IRBuilder
 from .passes.memory import DTensor
 from allo.utils import register_dialect, construct_kernel_name
+import allo._mlir.extras.types as mlir_types
 from .passes.stream_transform import replace_stream_arrays
 from allo._mlir.ir import (
     Module,
@@ -175,7 +176,7 @@ def parse(fn: Union[Callable, str], instantiate: list = None):
                         )  # call get_wid
                         for res, num in zip(op.results, dim):
                             const_op = arith_d.ConstantOp(
-                                arith_d.IndexType.get(), num, ip=InsertionPoint(op)
+                                mlir_types.index(), num, ip=InsertionPoint(op)
                             )
                             res.replace_all_uses_with(const_op.result)
                         op.erase()

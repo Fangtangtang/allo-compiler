@@ -3,6 +3,7 @@
 
 import ast
 from contextlib import contextmanager
+import allo._mlir.extras.types as mlir_types
 from allo._mlir.dialects import (
     allo as allo_d,
     bufferization as buf_d,
@@ -23,11 +24,7 @@ from allo._mlir.ir import (
     BlockArgument,
     FunctionType,
     MemRefType,
-    RankedTensorType,
-    IndexType,
     ShapedType,
-    IntegerType,
-    F32Type,
     UnitAttr,
     IntegerAttr,
     StringAttr,
@@ -194,7 +191,11 @@ class IRBuilder(ast.NodeVisitor):
     def build_work_arg_type(self, annotation: ast.Subscript, as_tensor: bool = True):
         dtype, shape, spec, is_unsign = self.parse_type_ann(annotation)
         if as_tensor:
-            return RankedTensorType.get(shape, dtype.build()), spec, is_unsign
+            return (
+                mlir_types.tensor(*shape, element_type=dtype.build()),
+                spec,
+                is_unsign,
+            )
         return MemRefType.get(shape, dtype.build()), spec, is_unsign
 
     def build_buffer(self, memref_type: MemRefType, is_unsigned: bool):
@@ -204,7 +205,9 @@ class IRBuilder(ast.NodeVisitor):
         return buffer
 
     def to_tensor(self, buffer):
-        result = RankedTensorType.get(buffer.type.shape, buffer.type.element_type)
+        result = mlir_types.tensor(
+            *buffer.type.shape, element_type=buffer.type.element_type
+        )
         return buf_d.to_tensor(result, buffer, ip=self.get_ip())
 
     def to_buffer(self, tensor):
@@ -229,13 +232,9 @@ class IRBuilder(ast.NodeVisitor):
 
     def visit_Constant(self, node: ast.Constant):
         if type(node.value) is int:
-            return arith_d.ConstantOp(
-                arith_d.IndexType.get(), node.value, ip=self.get_ip()
-            )
+            return arith_d.ConstantOp(mlir_types.index(), node.value, ip=self.get_ip())
         if type(node.value) is bool:
-            return arith_d.ConstantOp(
-                arith_d.IntegerType.get_signless(1), node.value, ip=self.get_ip()
-            )
+            return arith_d.ConstantOp(mlir_types.i(1), node.value, ip=self.get_ip())
         raise NotImplementedError
 
     def get_affine_expr(self, node: ast.expr, ivs: list, symbols: list):
@@ -633,7 +632,8 @@ class IRBuilder(ast.NodeVisitor):
                 mesh=sdy_d.MeshAttr.get(axes),
             )
         results = [
-            RankedTensorType.get(o.type.shape, o.type.element_type) for o in outputs
+            mlir_types.tensor(*o.type.shape, element_type=o.type.element_type)
+            for o in outputs
         ]
         local_types, in_shard = self.visit_work_interface(
             mesh.sym_name.value, callee.args.args[: len(inputs)], True

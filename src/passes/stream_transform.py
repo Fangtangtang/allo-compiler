@@ -47,7 +47,9 @@ def replace_stream_arrays(module):
                             val = idx_op.value.value
                             current_indices.append(str(val))
                         else:
-                            raise RuntimeError(f"Stream array index not constant {idx_op}")
+                            raise RuntimeError(
+                                f"Stream array index not constant {idx_op}"
+                            )
 
                     new_name = f"{stream_sym}_{'_'.join(current_indices)}"
 

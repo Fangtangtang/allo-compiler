@@ -11,6 +11,7 @@ from .ir.ast_processor import ASTProcessor
 from .ir.ir_builder import IRBuilder
 from .passes.memory import DTensor
 from allo.utils import register_dialect, construct_kernel_name
+from .passes.stream_transform import replace_stream_arrays
 from allo._mlir.ir import (
     Module,
     Context,
@@ -63,15 +64,21 @@ def parse(fn: Union[Callable, str], instantiate: list = None):
         register_dialect(ctx, True)
         new_module = Module.parse(module_content)
 
-        symbol_map = {}
-        for op in new_module.body.operations:
-            if "sym_name" in op.attributes:
-                name = str(op.attributes["sym_name"]).strip('"')
-                symbol_map[name] = op
+    with context as ctx, Location.unknown():
+        mod = Module.create()
+
+    symbol_map = {}
+    for op in new_module.body.operations:
+        if "sym_name" in op.attributes:
+            name = str(op.attributes["sym_name"]).strip('"')
+            symbol_map[name] = op
+        if isinstance(op, allo_d.StreamGlobalOp):
+            with InsertionPoint(mod.body), Location.unknown():
+                op.clone()
 
     top_module = symbol_map[top_name]
     work_grids = {}
-    dtensors = {}
+    dtensors = defaultdict(list)
     for func_block in top_module.body:
         for op in func_block.operations:
             if isinstance(op, sdy_d.ManualComputationOp):
@@ -129,7 +136,6 @@ def parse(fn: Union[Callable, str], instantiate: list = None):
                                 "work": sub_op.callee.value,
                             }
                             break
-                dtensors[sub_op.callee.value] = []
                 for tensor, operand in zip(tensors, sub_op.operands_):
                     dtensor = DTensor(
                         mapping=grid,
@@ -142,8 +148,6 @@ def parse(fn: Union[Callable, str], instantiate: list = None):
                     )
                     dtensors[sub_op.callee.value].append(dtensor)
 
-    with context as ctx, Location.unknown():
-        mod = Module.create()
     func_instances = defaultdict(dict)
     core_func_args = defaultdict(dict)
     with InsertionPoint(mod.body), Location.unknown():
@@ -155,7 +159,7 @@ def parse(fn: Union[Callable, str], instantiate: list = None):
                 func = orig_func.clone()
                 function_name = construct_kernel_name(grid_info["work"], dim)
                 func.sym_name = StringAttr.get(function_name)
-                func.attributes["tag"] = func.sym_name
+                func.attributes["tag"] = func.sym_name  # for aie backend
                 func_instances[orig_func_name][dim] = function_name
                 for i, dtensor in enumerate(dtensors[orig_func_name]):
                     core_func_args[function_name][i] = (
@@ -184,6 +188,8 @@ def parse(fn: Union[Callable, str], instantiate: list = None):
     pipeline = "builtin.module(canonicalize)"
     with context:
         mlir_pass_manager.parse(pipeline).run(mod.operation)
+
+    replace_stream_arrays(mod)
 
     with open("simplified_module.mlir", "w") as f:
         f.write(str(mod))

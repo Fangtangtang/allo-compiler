@@ -8,6 +8,8 @@ from allo._mlir.ir import (
     FlatSymbolRefAttr,
     InsertionPoint,
     Location,
+    AffineBinaryExpr,
+    AffineAddExpr,
 )
 from allo._mlir.dialects import (
     allo as allo_d,
@@ -33,7 +35,9 @@ def replace_stream_arrays(module):
                 stream_sym = op.attributes["global"].value
                 print(op.map)
                 for expr in op.map.value.results:
-                    print(expr)
+                    expr = AffineAddExpr(expr)
+                    # expr.lhs = expr.rhs
+                    print(dir(expr), expr.lhs)
                 if stream_sym in stream_arrays:
                     is_put = isinstance(op, allo_d.GlobalStreamPutOp)
                     num_indices = len(op.operands)

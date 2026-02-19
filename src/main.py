@@ -51,7 +51,7 @@ def process_spmw(fn: Union[Callable, str], instantiate: list = None):
     print(module)
 
 
-def to_hls(fn: Union[Callable, str], instantiate: list = None):
+def to_hls(fn: Union[Callable, str], instantiate: list = None, project=None):
     module, top_name = build(fn, instantiate, "hls")
     print(module)
 
@@ -70,7 +70,7 @@ def to_hls(fn: Union[Callable, str], instantiate: list = None):
         top_func_name=top_name,
         platform="vitis_hls",
         mode="sw_emu",
-        project="top.prj",
+        project=project if project else "top.prj",
         ext_libs=[],
         func_args=func_args,
         wrap_io=False,

@@ -122,12 +122,12 @@ def test_tensor_stream():
         @spmw.work(mapping=[4], inputs=[A])
         def producer(local_A: int32[16, 16]):
             pi = spmw.get_wid()
-            pipe[pi + 1].put(local_A)
+            pipe[pi].put(local_A)
 
         @spmw.work(mapping=[4], outputs=[B])
         def consumer(local_B: int32[16, 16]):
             pi = spmw.get_wid()
-            local_B[:, :] = pipe[pi + 1].get()
+            local_B[:, :] = pipe[pi].get()
 
     s = parse(top)
 
@@ -169,11 +169,11 @@ def test_stream_array():
 
 
 if __name__ == "__main__":
-    # test_shard_1D_1()
-    # test_shard_1D_2()
-    # test_shard_1D_3()
-    # test_shard_1D_4()
-    # test_scalar_stream_1()
-    # test_scalar_stream_2()
+    test_shard_1D_1()
+    test_shard_1D_2()
+    test_shard_1D_3()
+    test_shard_1D_4()
+    test_scalar_stream_1()
+    test_scalar_stream_2()
     test_tensor_stream()
-    # test_stream_array()
+    test_stream_array()

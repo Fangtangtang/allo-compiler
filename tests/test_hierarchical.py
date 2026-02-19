@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import numpy as np
-from src.parse import parse, to_aie
+from src.main import process_spmw
 import allo
 from allo.ir.types import int32, Stream
 from allo import spmw
@@ -29,7 +29,7 @@ def test_h1():
         ):
             vadd(local_A, local_B)
 
-    s = parse(top)
+    s = process_spmw(top)
 
 
 if __name__ == "__main__":

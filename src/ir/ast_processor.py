@@ -1,13 +1,14 @@
 # Copyright Allo authors. All Rights Reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import ast
 import copy
 from typing import Union
 from collections import deque, ChainMap
 from contextlib import contextmanager
 from collections.abc import Callable
 import numpy as np
-import ast
+import sympy
 from .utils import get_ast, SymbolTable, Scope, ErrorValue
 from .typing_rule import cpp_style_registry
 from allo.spmw import FunctionType
@@ -18,6 +19,7 @@ from allo.ir.types import (
     Stateful,
     ConstExpr,
     Index,
+    UInt,
     bool as allo_bool,
 )
 from allo.memory import Layout
@@ -483,6 +485,49 @@ class ASTProcessor(ast.NodeTransformer):
         node.shape = tuple()
         return node
 
+    def visit_symbol(self, node: ast.expr):
+        """
+        symbol must be a index
+        """
+        try:
+            const_node = self.visit_constant(node)
+            assert isinstance(const_node, ast.Constant) and len(const_node.shape) == 0
+            return self.visit_cast(const_node, Index()), sympy.Integer(
+                int(const_node.value)
+            )
+        except:
+            pass
+        if isinstance(node, ast.Name):
+            new_node = self.visit_cast(self.visit(node), Index())
+            assert len(new_node.shape) == 0, "Invalid index"
+            return new_node, sympy.symbols(node.id)
+        if isinstance(node, ast.BinOp):
+            lhs, lhs_symbol = self.visit_symbol(node.left)
+            rhs, rhs_symbol = self.visit_symbol(node.right)
+            new_node = self.visit_binary_op_operands(lhs, rhs, node.op)
+            new_node = self.visit_cast(new_node, Index())
+            assert len(new_node.shape) == 0, "Invalid index"
+            if lhs_symbol and rhs_symbol:
+                op = {
+                    ast.Add: lambda l, r: l + r,
+                    ast.Sub: lambda l, r: l - r,
+                    ast.Mult: lambda l, r: l * r,
+                    ast.Div: lambda l, r: l / r,
+                    ast.FloorDiv: lambda l, r: l // r,
+                    ast.Mod: lambda l, r: l % r,
+                    ast.Pow: lambda l, r: l**r,
+                    ast.LShift: lambda l, r: l << r,
+                    ast.RShift: lambda l, r: l >> r,
+                    ast.BitOr: lambda l, r: l | r,
+                    ast.BitXor: lambda l, r: l ^ r,
+                    ast.BitAnd: lambda l, r: l & r,
+                }.get(type(node.op))
+                return new_node, op(lhs_symbol, rhs_symbol)
+            return new_node, None
+        node = self.visit_cast(self.visit(node), Index())
+        assert len(node.shape) == 0, "Invalid index"
+        return node, None
+
     def visit_Name(self, node: ast.Name):
         var = self.get_symbol(node.id, allow_missing=True)
         if var is not None:
@@ -530,7 +575,7 @@ class ASTProcessor(ast.NodeTransformer):
             shape = []
             for idx, elt in enumerate(elts):
                 elt_ = self.visit(elt)
-                if isinstance(elt_, ast.Slice):
+                if isinstance(elt_, ast.Slice):  # TODO: use visit_symbol?
                     if elt_.upper is None:
                         elt_.upper = ast.Constant(value.shape[idx])
                     assert isinstance(elt_.lower, ast.Constant)
@@ -552,7 +597,25 @@ class ASTProcessor(ast.NodeTransformer):
             else:
                 node.slice = new_elts[0]
             return node
-        raise NotImplementedError
+        # bit operation
+        if isinstance(node.slice, ast.Slice):  # slice
+            assert node.slice.lower and node.slice.upper
+            node.slice.lower, l_symbol = self.visit_symbol(node.slice.lower)
+            node.slice.upper, u_symbol = self.visit_symbol(node.slice.upper)
+            if node.slice.step:
+                node.slice.step, s_symbol = self.visit_symbol(node.slice.step)
+                assert isinstance(s_symbol, sympy.Integer) and s_symbol == 1
+            if l_symbol and u_symbol and isinstance(u_symbol - l_symbol, sympy.Integer):
+                size = int(u_symbol - l_symbol)
+                assert size > 0, "upper bound must be greater than lower bound"
+                node.dtype = UInt(size)
+            node.shape = tuple()
+            return node
+        # single bit
+        node.slice = self.visit_cast(self.visit(node.slice), Index())
+        assert len(node.slice.shape) == 0, "Invalid index"
+        node.dtype, node.shape = UInt(1), tuple()
+        return node
 
     def visit_Slice(self, node: ast.Slice):
         # e.g., A[0:10], A[::-1]

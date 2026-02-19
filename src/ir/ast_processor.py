@@ -559,12 +559,13 @@ class ASTProcessor(ast.NodeTransformer):
 
     def visit_Subscript(self, node: ast.Subscript):
         # e.g., A[i], A[i, j]
-        # slice: A[0:10], A[::-1]
+        # slice: A[0:10], A[::1]
         try:
             return self.visit_constant(node)  # parse as compile time constant
         except:
             pass
         value = self.visit(node.value)
+        node.value = value
         if len(value.shape) > 0:
             # tensor subscript
             elts = (
@@ -591,7 +592,6 @@ class ASTProcessor(ast.NodeTransformer):
             if not hasattr(value, "dtype"):
                 value = self.finalize_dtype(value)
             node.dtype, node.shape = value.dtype, tuple(shape)
-            node.value = value
             if isinstance(node.slice, ast.Tuple):
                 node.slice.elts = new_elts
             else:
@@ -610,11 +610,22 @@ class ASTProcessor(ast.NodeTransformer):
                 assert size > 0, "upper bound must be greater than lower bound"
                 node.dtype = UInt(size)
             node.shape = tuple()
-            return node
-        # single bit
-        node.slice = self.visit_cast(self.visit(node.slice), Index())
-        assert len(node.slice.shape) == 0, "Invalid index"
-        node.dtype, node.shape = UInt(1), tuple()
+        else:  # single bit
+            node.slice = self.visit_cast(self.visit(node.slice), Index())
+            assert len(node.slice.shape) == 0, "Invalid index"
+            node.dtype, node.shape = UInt(1), tuple()
+        if isinstance(node.ctx, ast.Load):  # get bit or get slice
+            call_op = ast.Call(
+                func=ast.Attribute(
+                    value=ast.Name(id="__allo__", ctx=ast.Load()),
+                    attr="get_bits",
+                    ctx=ast.Load(),
+                ),
+                args=[node, self.get_ast_annotaiton(node.dtype, node.shape, None)],
+                keywords=[],
+            )
+            call_op.dtype, call_op.shape = node.dtype, node.shape
+            return call_op
         return node
 
     def visit_Slice(self, node: ast.Slice):
@@ -738,9 +749,28 @@ class ASTProcessor(ast.NodeTransformer):
             value = self.visit_broadcast(value, target_dtype, target_shape)
 
         target.dtype, target.shape = value.dtype, value.shape
-        annotation = self.get_ast_annotaiton(
-            target.dtype, target.shape, getattr(target, "spec", None)
-        )
+
+        if isinstance(target, ast.Subscript) and len(target.shape) == 0:
+            # set bit or set slice
+            annotation = self.get_ast_annotaiton(
+                target.value.dtype, target.value.shape, None
+            )
+            set_bits_op = ast.Call(
+                func=ast.Attribute(
+                    value=ast.Name(id="__allo__", ctx=ast.Load()),
+                    attr="set_bits",
+                    ctx=ast.Load(),
+                ),
+                args=[target, value, annotation],
+                keywords=[],
+            )
+            target = target.value
+            value = set_bits_op
+            value.dtype, value.shape = target.dtype, target.shape
+        else:
+            annotation = self.get_ast_annotaiton(
+                target.dtype, target.shape, getattr(target, "spec", None)
+            )
         assign_node = ast.AnnAssign(
             target=target,
             annotation=annotation,

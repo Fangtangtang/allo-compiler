@@ -13,14 +13,22 @@ def test_get_bit():
     def kernel1(a: int32) -> int32:
         return a[28:32]
 
-    s = build(kernel1)
+    s = process(kernel1)
     pass
 
     @kernel
     def kernel2(a: int32) -> int32:
         return a[28 : int32.bits]
 
-    s = build(kernel2)
+    s = process(kernel2)
+
+    @kernel
+    def kernel3() -> int32:
+        a: int32
+        a[28 : int32.bits] = 1
+        return a
+
+    s = process(kernel3)
 
 
 if __name__ == "__main__":

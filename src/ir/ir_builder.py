@@ -280,6 +280,7 @@ class IRBuilder(ast.NodeVisitor):
         if isinstance(base, MockCallResultTuple):
             # [NOTE] special case handling for function call with multiple return
             return base.results[node.slice.value]
+        assert isinstance(base.type, MemRefType)
         shape: list[int] = base.type.shape  # tensor shape
         layout = base.type.layout
         elts = node.slice.elts if isinstance(node.slice, ast.Tuple) else [node.slice]

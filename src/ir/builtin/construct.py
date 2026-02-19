@@ -74,3 +74,54 @@ class StreamGetHandler(BuiltinHandler):
         )
         op.attributes[type_hint] = UnitAttr.get()
         return op
+
+
+@register_builtin_handler("set_bits")
+class SetBitsHandler(BuiltinHandler):
+    def build(self, node, *args):
+        result, type_hint = self.builder.build_type(node.args[2])
+        value = self.builder.get_op_result(self.builder.visit(node.args[1]))
+        assert isinstance(node.args[0], ast.Subscript)
+        base = self.builder.get_op_result(self.builder.visit(node.args[0].value))
+        bits = node.args[0].slice
+        if isinstance(bits, ast.Slice):  # set slice
+            return allo_d.SetIntSliceOp(
+                result,
+                base,
+                self.builder.get_op_result(self.builder.visit(bits.upper)),
+                self.builder.get_op_result(self.builder.visit(bits.lower)),
+                value,
+                ip=self.builder.get_ip(),
+            )
+        else:
+            return allo_d.SetIntBitOp(
+                result,
+                base,
+                self.builder.get_op_result(self.builder.visit(bits)),
+                value,
+                ip=self.builder.get_ip(),
+            )
+
+
+@register_builtin_handler("get_bits")
+class GetBitsHandler(BuiltinHandler):
+    def build(self, node, *args):
+        result, type_hint = self.builder.build_type(node.args[1])
+        assert isinstance(node.args[0], ast.Subscript)
+        base = self.builder.get_op_result(self.builder.visit(node.args[0].value))
+        bits = node.args[0].slice
+        if isinstance(bits, ast.Slice):  # get slice
+            return allo_d.GetIntSliceOp(
+                result,
+                base,
+                self.builder.get_op_result(self.builder.visit(bits.upper)),
+                self.builder.get_op_result(self.builder.visit(bits.lower)),
+                ip=self.builder.get_ip(),
+            )
+        else:
+            return allo_d.GetIntBitOp(
+                result,
+                base,
+                self.builder.get_op_result(self.builder.visit(bits)),
+                ip=self.builder.get_ip(),
+            )

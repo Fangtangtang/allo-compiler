@@ -11,6 +11,8 @@ from .ir.ir_builder import IRBuilder
 from allo.backend.llvm import LLVMModule
 from allo.backend.hls import HLSModule
 from allo.backend.simulator import LLVMOMPModule
+from allo._mlir.dialects import allo as allo_d, func as func_d
+from allo._mlir.passmanager import PassManager as mlir_pass_manager
 
 
 def build(fn: Union[Callable, str], instantiate: list = None, typing: str = None):
@@ -52,15 +54,26 @@ def process_spmw(fn: Union[Callable, str], instantiate: list = None):
 def to_hls(fn: Union[Callable, str], instantiate: list = None):
     module, top_name = build(fn, instantiate, "hls")
     print(module)
+
+    for func in module.body.operations:
+        if isinstance(func, func_d.FuncOp):
+            allo_d.copy_on_write_on_function(func)
+
+    pipeline = "builtin.module(canonicalize)"
+    with module.context:
+        mlir_pass_manager.parse(pipeline).run(module.operation)
+
+    print(module)
     func_args = {}
     mod = HLSModule(
         module,
         top_func_name=top_name,
         platform="vitis_hls",
         mode="sw_emu",
+        project="top.prj",
         ext_libs=[],
         func_args=func_args,
-        wrap_io=True,
+        wrap_io=False,
     )
 
     return mod

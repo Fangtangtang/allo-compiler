@@ -169,7 +169,7 @@ class IRBuilder(ast.NodeVisitor):
         allo_type = self.symbol_table.types[dtype.id]
         shape = [int(size.value) for size in shape.elts]
         spec = None if spec.id == "None" else self.symbol_table.types[spec.id]
-        return allo_type, shape, spec, dtype.id.startswith("u")
+        return allo_type, shape, spec, allo_type.type_hint()
 
     def build_type(self, annotation: ast.Subscript, force_memref: bool = False):
         """
@@ -180,27 +180,26 @@ class IRBuilder(ast.NodeVisitor):
             force_memref: if True, return memref type
 
         Returns:
-            type, is_unsigned # FIXME: find a better way to handle unsigned
+            type, type_hint # FIXME: find a better way to handle unsigned
         """
-        dtype, shape, _, is_unsign = self.parse_type_ann(annotation)
+        dtype, shape, _, type_hint = self.parse_type_ann(annotation)
         if len(shape) == 0 and not force_memref:
-            return dtype.build(), is_unsign
-        return MemRefType.get(shape, dtype.build()), is_unsign
+            return dtype.build(), type_hint
+        return MemRefType.get(shape, dtype.build()), type_hint
 
     def build_work_arg_type(self, annotation: ast.Subscript, as_tensor: bool = True):
-        dtype, shape, spec, is_unsign = self.parse_type_ann(annotation)
+        dtype, shape, spec, type_hint = self.parse_type_ann(annotation)
         if as_tensor:
             return (
                 mlir_types.tensor(*shape, element_type=dtype.build()),
                 spec,
-                is_unsign,
+                type_hint,
             )
-        return MemRefType.get(shape, dtype.build()), spec, is_unsign
+        return MemRefType.get(shape, dtype.build()), spec, type_hint
 
-    def build_buffer(self, memref_type: MemRefType, is_unsigned: bool):
+    def build_buffer(self, memref_type: MemRefType, type_hint: str):
         buffer = memref_d.AllocOp(memref_type, [], [], ip=self.get_ip())
-        if is_unsigned:
-            buffer.attributes["unsigned"] = UnitAttr.get()
+        buffer.attributes[type_hint] = UnitAttr.get()
         return buffer
 
     def to_tensor(self, buffer):
@@ -573,7 +572,9 @@ class IRBuilder(ast.NodeVisitor):
                 and ret.type != self.current_func.type.results[idx]
             ):  # mlir has strict type checking, `memref<32xi32, strided<[1]>>` != `memref<32xi32>`
                 # FIXME: return unsigned?
-                alloc_op = self.build_buffer(self.current_func.type.results[idx], False)
+                alloc_op = self.build_buffer(
+                    self.current_func.type.results[idx], "signed"
+                )
                 memref_d.CopyOp(ret, alloc_op.result, ip=self.get_ip())
                 ret = alloc_op.result
             rets.append(ret)
@@ -586,12 +587,13 @@ class IRBuilder(ast.NodeVisitor):
         raise NotImplementedError
 
     def visit_work_interface(self, mesh_name, arg_list, as_tensor):
-        types, shards = [], []
+        types, type_hints, shards = [], [], []
         for in_arg in arg_list:
-            t_type, spec, is_unsign = self.build_work_arg_type(
+            t_type, spec, type_hint = self.build_work_arg_type(
                 in_arg.annotation, as_tensor
-            )  # TODO:unsigned
+            )
             types.append(t_type)
+            type_hints.append(type_hint)
             shards.append(
                 sdy.tensor_sharding(
                     mesh_name,
@@ -601,7 +603,7 @@ class IRBuilder(ast.NodeVisitor):
                     ],
                 )
             )
-        return types, shards
+        return types, type_hints, shards
 
     def visit_work(self, callee: ast.FunctionDef):
         callee_name = callee.name
@@ -623,10 +625,10 @@ class IRBuilder(ast.NodeVisitor):
             mlir_types.tensor(*o.type.shape, element_type=o.type.element_type)
             for o in outputs
         ]
-        local_types, in_shard = self.visit_work_interface(
+        local_types, _, in_shard = self.visit_work_interface(
             mesh.sym_name.value, callee.args.args[: len(inputs)], True
         )
-        output_types, out_shard = self.visit_work_interface(
+        output_types, otype_hints, out_shard = self.visit_work_interface(
             mesh.sym_name.value, callee.args.args[len(inputs) :], False
         )
         with self.get_ip():
@@ -639,8 +641,8 @@ class IRBuilder(ast.NodeVisitor):
         args = [self.to_buffer(input_) for input_ in block.arguments]
         # allocate buffer for outputs
         out_args = [
-            self.build_buffer(o, is_unsigned=False)  # TODO: usigned?
-            for o in output_types
+            self.build_buffer(o, type_hint=hint)
+            for o, hint in zip(output_types, otype_hints)
         ]
         args.extend(out_args)
         func_d.CallOp([], FlatSymbolRefAttr.get(callee_name), args, ip=self.get_ip())
@@ -684,27 +686,28 @@ class IRBuilder(ast.NodeVisitor):
         raise NotImplementedError
 
     def visit_FunctionDef(self, node: ast.FunctionDef):
-        input_types, input_is_unsigned = [], []
+        input_types, input_hints = [], []
         for arg in node.args.args:
-            in_type, is_unsigned = self.build_type(arg.annotation)
+            in_type, hint = self.build_type(arg.annotation)
             input_types.append(in_type)
-            input_is_unsigned.append(is_unsigned)
-        if node.returns is None:
-            output_types = []
-        else:
+            input_hints.append(hint[0])
+        output_types, output_hints = [], []
+        if node.returns:
             rets = (
                 node.returns.elts
                 if isinstance(node.returns, ast.Tuple)
                 else [node.returns]
             )
-            output_types, output_is_unsigned = [], []
+
             for ret in rets:
-                out_type, is_unsigned = self.build_type(ret)
+                out_type, hint = self.build_type(ret)
                 output_types.append(out_type)
-                output_is_unsigned.append(is_unsigned)
+                output_hints.append(hint[0])
         # Build function
         func_type = FunctionType.get(input_types, output_types)
         func_op = func_d.FuncOp(name=node.name, type=func_type, ip=self.get_ip())
+        func_op.attributes["itypes"] = StringAttr.get("".join(input_hints))
+        func_op.attributes["otypes"] = StringAttr.get("".join(output_hints))
         func_op.add_entry_block()
         self.current_func = func_op
         self.reserved_bindings.clear()

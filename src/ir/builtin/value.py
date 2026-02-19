@@ -147,8 +147,8 @@ class CastHandler(BuiltinHandler):
     def get_result_type(self, node: ast.Call):
         return self.builder.build_type(node.args[1])
 
-    def get_generic_wrapper(self, val, dst_type, is_unsigned=False):
-        buffer_op = self.builder.build_buffer(dst_type, is_unsigned)
+    def get_generic_wrapper(self, val, dst_type, type_hint: str):
+        buffer_op = self.builder.build_buffer(dst_type, type_hint)  # type hint tagged
         shape = val.type.shape
         index_exprs = []
         for dim in range(len(shape)):
@@ -172,8 +172,7 @@ class CastHandler(BuiltinHandler):
             result_tensors=[],
             iterator_types=iterator_types_attr,
         )
-        if is_unsigned:
-            cast_op.attributes["unsigned"] = UnitAttr.get()
+        cast_op.attributes[type_hint] = UnitAttr.get()
         block_arg_types = [val.type.element_type, dst_type.element_type]
         block = cast_op.regions[0].blocks.append(*block_arg_types)
         return buffer_op, block
@@ -183,14 +182,13 @@ class CastHandler(BuiltinHandler):
 class IndexCastHandler(CastHandler):
     def build(self, node: ast.Call, *args):
         val = self.get_operand(node)
-        mlir_type, is_unsigned = self.get_result_type(node)
+        mlir_type, type_hint = self.get_result_type(node)
         if len(getattr(mlir_type, "shape", [])) == 0:  # scalar
             op = arith_d.IndexCastOp(mlir_type, val, ip=self.builder.get_ip())
-            if is_unsigned:
-                op.attributes["unsigned"] = UnitAttr.get()
+            op.attributes[type_hint] = UnitAttr.get()
             return op
         else:  # tensor (memref)
-            op, generic_block = self.get_generic_wrapper(val, mlir_type, is_unsigned)
+            op, generic_block = self.get_generic_wrapper(val, mlir_type, type_hint)
             with InsertionPoint(generic_block):
                 # add cast op to block
                 yield_value = arith_d.IndexCastOp(
@@ -204,12 +202,13 @@ class IndexCastHandler(CastHandler):
 class SIToFPCastHandler(CastHandler):
     def build(self, node: ast.Call, *args):
         val = self.get_operand(node)
-        mlir_type, _ = self.get_result_type(node)
-        if len(getattr(mlir_type, "shape", [])) == 0:
-            # scalar
-            return arith_d.SIToFPOp(mlir_type, val, ip=self.builder.get_ip())
+        mlir_type, type_hint = self.get_result_type(node)
+        if len(getattr(mlir_type, "shape", [])) == 0:  # scalar
+            op = arith_d.SIToFPOp(mlir_type, val, ip=self.builder.get_ip())
+            op.attributes[type_hint] = UnitAttr.get()
+            return op
         # tensor (memref)
-        op, generic_block = self.get_generic_wrapper(val, mlir_type)
+        op, generic_block = self.get_generic_wrapper(val, mlir_type, type_hint)
         with InsertionPoint(generic_block):
             # add cast op to block
             yield_value = arith_d.SIToFPOp(
@@ -223,12 +222,13 @@ class SIToFPCastHandler(CastHandler):
 class UIToFPCastHandler(CastHandler):
     def build(self, node: ast.Call, *args):
         val = self.get_operand(node)
-        mlir_type, _ = self.get_result_type(node)
-        if len(getattr(mlir_type, "shape", [])) == 0:
-            # scalar
-            return arith_d.UIToFPOp(mlir_type, val, ip=self.builder.get_ip())
+        mlir_type, type_hint = self.get_result_type(node)
+        if len(getattr(mlir_type, "shape", [])) == 0:  # scalar
+            op = arith_d.UIToFPOp(mlir_type, val, ip=self.builder.get_ip())
+            op.attributes[type_hint] = UnitAttr.get()
+            return op
         # tensor (memref)
-        op, generic_block = self.get_generic_wrapper(val, mlir_type)
+        op, generic_block = self.get_generic_wrapper(val, mlir_type, type_hint)
         with InsertionPoint(generic_block):
             # add cast op to block
             yield_value = arith_d.UIToFPOp(
@@ -242,12 +242,13 @@ class UIToFPCastHandler(CastHandler):
 class FPToSICastHandler(CastHandler):
     def build(self, node: ast.Call, *args):
         val = self.get_operand(node)
-        mlir_type, _ = self.get_result_type(node)
-        if len(getattr(mlir_type, "shape", [])) == 0:
-            # scalar
-            return arith_d.FPToSIOp(mlir_type, val, ip=self.builder.get_ip())
+        mlir_type, type_hint = self.get_result_type(node)
+        if len(getattr(mlir_type, "shape", [])) == 0:  # scalar
+            op = arith_d.FPToSIOp(mlir_type, val, ip=self.builder.get_ip())
+            op.attributes[type_hint] = UnitAttr.get()
+            return op
         # tensor (memref)
-        op, generic_block = self.get_generic_wrapper(val, mlir_type)
+        op, generic_block = self.get_generic_wrapper(val, mlir_type, type_hint)
         with InsertionPoint(generic_block):
             # add cast op to block
             yield_value = arith_d.FPToSIOp(
@@ -261,12 +262,13 @@ class FPToSICastHandler(CastHandler):
 class FPToUICastHandler(CastHandler):
     def build(self, node: ast.Call, *args):
         val = self.get_operand(node)
-        mlir_type, _ = self.get_result_type(node)
-        if len(getattr(mlir_type, "shape", [])) == 0:
-            # scalar
-            return arith_d.FPToUIOp(mlir_type, val, ip=self.builder.get_ip())
+        mlir_type, type_hint = self.get_result_type(node)
+        if len(getattr(mlir_type, "shape", [])) == 0:  # scalar
+            op = arith_d.FPToUIOp(mlir_type, val, ip=self.builder.get_ip())
+            op.attributes[type_hint] = UnitAttr.get()
+            return op
         # tensor (memref)
-        op, generic_block = self.get_generic_wrapper(val, mlir_type)
+        op, generic_block = self.get_generic_wrapper(val, mlir_type, type_hint)
         with InsertionPoint(generic_block):
             # add cast op to block
             yield_value = arith_d.FPToUIOp(
@@ -280,14 +282,13 @@ class FPToUICastHandler(CastHandler):
 class FloatToFixedCastHandler(CastHandler):
     def build(self, node: ast.Call, *args):
         val = self.get_operand(node)
-        mlir_type, is_unsigned = self.get_result_type(node)
+        mlir_type, type_hint = self.get_result_type(node)
         if len(getattr(mlir_type, "shape", [])) == 0:  # scalar
             op = allo_d.FloatToFixedOp(mlir_type, val, ip=self.builder.get_ip())
-            if is_unsigned:
-                op.attributes["unsigned"] = UnitAttr.get()
+            op.attributes[type_hint] = UnitAttr.get()
             return op
         else:  # tensor (memref)
-            op, generic_block = self.get_generic_wrapper(val, mlir_type, is_unsigned)
+            op, generic_block = self.get_generic_wrapper(val, mlir_type, type_hint)
             with InsertionPoint(generic_block):
                 # add cast op to block
                 yield_value = allo_d.FloatToFixedOp(
@@ -301,12 +302,13 @@ class FloatToFixedCastHandler(CastHandler):
 class FixedToFloatCastHandler(CastHandler):
     def build(self, node: ast.Call, *args):
         val = self.get_operand(node)
-        mlir_type, _ = self.get_result_type(node)
-        if len(getattr(mlir_type, "shape", [])) == 0:
-            # scalar
-            return allo_d.FixedToFloatOp(mlir_type, val, ip=self.builder.get_ip())
+        mlir_type, type_hint = self.get_result_type(node)
+        if len(getattr(mlir_type, "shape", [])) == 0:  # scalar
+            op = allo_d.FixedToFloatOp(mlir_type, val, ip=self.builder.get_ip())
+            op.attributes[type_hint] = UnitAttr.get()
+            return op
         # tensor (memref)
-        op, generic_block = self.get_generic_wrapper(val, mlir_type)
+        op, generic_block = self.get_generic_wrapper(val, mlir_type, type_hint)
         with InsertionPoint(generic_block):
             # add cast op to block
             yield_value = allo_d.FixedToFloatOp(
@@ -320,14 +322,13 @@ class FixedToFloatCastHandler(CastHandler):
 class FixedToIntCastHandler(CastHandler):
     def build(self, node: ast.Call, *args):
         val = self.get_operand(node)
-        mlir_type, is_unsigned = self.get_result_type(node)
+        mlir_type, type_hint = self.get_result_type(node)
         if len(getattr(mlir_type, "shape", [])) == 0:  # scalar
             op = allo_d.FixedToIntOp(mlir_type, val, ip=self.builder.get_ip())
-            if is_unsigned:
-                op.attributes["unsigned"] = UnitAttr.get()
+            op.attributes[type_hint] = UnitAttr.get()
             return op
         else:  # tensor (memref)
-            op, generic_block = self.get_generic_wrapper(val, mlir_type, is_unsigned)
+            op, generic_block = self.get_generic_wrapper(val, mlir_type, type_hint)
             with InsertionPoint(generic_block):
                 # add cast op to block
                 yield_value = allo_d.FixedToIntOp(
@@ -341,14 +342,13 @@ class FixedToIntCastHandler(CastHandler):
 class IntToFixedCastHandler(CastHandler):
     def build(self, node: ast.Call, *args):
         val = self.get_operand(node)
-        mlir_type, is_unsigned = self.get_result_type(node)
+        mlir_type, type_hint = self.get_result_type(node)
         if len(getattr(mlir_type, "shape", [])) == 0:  # scalar
             op = allo_d.IntToFixedOp(mlir_type, val, ip=self.builder.get_ip())
-            if is_unsigned:
-                op.attributes["unsigned"] = UnitAttr.get()
+            op.attributes[type_hint] = UnitAttr.get()
             return op
         else:  # tensor (memref)
-            op, generic_block = self.get_generic_wrapper(val, mlir_type, is_unsigned)
+            op, generic_block = self.get_generic_wrapper(val, mlir_type, type_hint)
             with InsertionPoint(generic_block):
                 # add cast op to block
                 yield_value = allo_d.IntToFixedOp(
@@ -362,14 +362,13 @@ class IntToFixedCastHandler(CastHandler):
 class FixedToFixedCastHandler(CastHandler):
     def build(self, node: ast.Call, *args):
         val = self.get_operand(node)
-        mlir_type, is_unsigned = self.get_result_type(node)
+        mlir_type, type_hint = self.get_result_type(node)
         if len(getattr(mlir_type, "shape", [])) == 0:  # scalar
             op = allo_d.FixedToFixedOp(mlir_type, val, ip=self.builder.get_ip())
-            if is_unsigned:
-                op.attributes["unsigned"] = UnitAttr.get()
+            op.attributes[type_hint] = UnitAttr.get()
             return op
         else:  # tensor (memref)
-            op, generic_block = self.get_generic_wrapper(val, mlir_type, is_unsigned)
+            op, generic_block = self.get_generic_wrapper(val, mlir_type, type_hint)
             with InsertionPoint(generic_block):
                 # add cast op to block
                 yield_value = allo_d.FixedToFixedOp(
@@ -383,7 +382,7 @@ class FixedToFixedCastHandler(CastHandler):
 class IntCastHandler(CastHandler):
     def build(self, node: ast.Call, *args):
         val = self.get_operand(node)
-        dst_type, is_unsigned = self.get_result_type(node)
+        dst_type, type_hint = self.get_result_type(node)
         if len(getattr(dst_type, "shape", [])) == 0:
             is_scalar = True
             src_width = val.type.width
@@ -395,7 +394,7 @@ class IntCastHandler(CastHandler):
         if src_width > dst_width:
             opcls = arith_d.TruncIOp
         elif src_width < dst_width:
-            if is_unsigned:
+            if type_hint.startswith("u"):
                 opcls = arith_d.ExtUIOp
             else:
                 opcls = arith_d.ExtSIOp
@@ -403,11 +402,10 @@ class IntCastHandler(CastHandler):
             return val
         if is_scalar:  # scalar
             op = opcls(dst_type, val, ip=self.builder.get_ip())
-            if is_unsigned:
-                op.attributes["unsigned"] = UnitAttr.get()
+            op.attributes[type_hint] = UnitAttr.get()
             return op
         else:  # tensor (memref)
-            op, generic_block = self.get_generic_wrapper(val, dst_type, is_unsigned)
+            op, generic_block = self.get_generic_wrapper(val, dst_type, type_hint)
             with InsertionPoint(generic_block):
                 # add cast op to block
                 yield_value = opcls(dst_type.element_type, generic_block.arguments[0])
@@ -419,7 +417,7 @@ class IntCastHandler(CastHandler):
 class FloatCastHandler(CastHandler):
     def build(self, node: ast.Call, *args):
         val = self.get_operand(node)
-        dst_type, _ = self.get_result_type(node)
+        dst_type, type_hint = self.get_result_type(node)
         if len(getattr(dst_type, "shape", [])) == 0:
             is_scalar = True
             src_width = val.type.width
@@ -436,8 +434,9 @@ class FloatCastHandler(CastHandler):
             return val
         if is_scalar:  # scalar
             op = opcls(dst_type, val, ip=self.builder.get_ip())
+            op.attributes[type_hint] = UnitAttr.get()
         else:  # tensor (memref)
-            op, generic_block = self.get_generic_wrapper(val, dst_type)
+            op, generic_block = self.get_generic_wrapper(val, dst_type, type_hint)
             with InsertionPoint(generic_block):
                 # add cast op to block
                 yield_value = opcls(dst_type.element_type, generic_block.arguments[0])
@@ -449,13 +448,15 @@ class FloatCastHandler(CastHandler):
 class FloatToIndexCastHandler(CastHandler):
     def build(self, node: ast.Call, *args):
         val = self.get_operand(node)
-        mlir_type, _ = self.get_result_type(node)
+        mlir_type, type_hint = self.get_result_type(node)
         # FP -> UI -> Index
         if len(getattr(mlir_type, "shape", [])) == 0:
             op = arith_d.FPToUIOp(mlir_types.i(32), val, ip=self.builder.get_ip())
-            return arith_d.IndexCastOp(mlir_type, op.result, ip=self.builder.get_ip())
+            op = arith_d.IndexCastOp(mlir_type, op.result, ip=self.builder.get_ip())
+            op.attributes[type_hint] = UnitAttr.get()
+            return op
         else:
-            op, generic_block = self.get_generic_wrapper(val, mlir_type)
+            op, generic_block = self.get_generic_wrapper(val, mlir_type, type_hint)
             with InsertionPoint(generic_block):
                 # add cast op to block
                 value = arith_d.FPToUIOp(mlir_types.i(32), generic_block.arguments[0])
@@ -468,13 +469,15 @@ class FloatToIndexCastHandler(CastHandler):
 class IndexToFloatCastHandler(CastHandler):
     def build(self, node: ast.Call, *args):
         val = self.get_operand(node)
-        mlir_type, _ = self.get_result_type(node)
+        mlir_type, type_hint = self.get_result_type(node)
         # Index -> SI -> FP
         if len(getattr(mlir_type, "shape", [])) == 0:
             op = arith_d.IndexCastOp(mlir_types.i(32), val, ip=self.builder.get_ip())
-            return arith_d.SIToFPOp(mlir_type, op.result, ip=self.builder.get_ip())
+            op = arith_d.SIToFPOp(mlir_type, op.result, ip=self.builder.get_ip())
+            op.attributes[type_hint] = UnitAttr.get()
+            return op
         else:
-            op, generic_block = self.get_generic_wrapper(val, mlir_type)
+            op, generic_block = self.get_generic_wrapper(val, mlir_type, type_hint)
             with InsertionPoint(generic_block):
                 # add cast op to block
                 value = arith_d.IndexCastOp(
@@ -489,12 +492,11 @@ class IndexToFloatCastHandler(CastHandler):
 class IndexToFixedCastHandler(CastHandler):
     def build(self, node: ast.Call, *args):
         val = self.get_operand(node)
-        mlir_type, is_unsigned = self.get_result_type(node)
+        mlir_type, type_hint = self.get_result_type(node)
         if len(getattr(mlir_type, "shape", [])) == 0:
             op = arith_d.IndexCastOp(mlir_types.i(32), val, ip=self.builder.get_ip())
             op = allo_d.IntToFixedOp(mlir_type, op.result, ip=self.builder.get_ip())
-            if is_unsigned:
-                op.attributes["unsigned"] = UnitAttr.get()
+            op.attributes[type_hint] = UnitAttr.get()
             return op
         else:
             op, generic_block = self.get_generic_wrapper(val, mlir_type)
@@ -504,8 +506,7 @@ class IndexToFixedCastHandler(CastHandler):
                     mlir_types.i(32), generic_block.arguments[0]
                 )
                 yield_value = allo_d.IntToFixedOp(mlir_type.element_type, value)
-                if is_unsigned:
-                    yield_value.attributes["unsigned"] = UnitAttr.get()
+                yield_value.attributes[type_hint] = UnitAttr.get()
                 linalg_d.YieldOp([yield_value])
             return op
 
@@ -514,12 +515,14 @@ class IndexToFixedCastHandler(CastHandler):
 class FixedToIndexCastHandler(CastHandler):
     def build(self, node: ast.Call, *args):
         val = self.get_operand(node)
-        mlir_type, _ = self.get_result_type(node)
+        mlir_type, type_hint = self.get_result_type(node)
         if len(getattr(mlir_type, "shape", [])) == 0:  # scalar
             op = allo_d.FixedToIntOp(mlir_types.i(32), val, ip=self.builder.get_ip())
-            return arith_d.IndexCastOp(mlir_type, op.result, ip=self.builder.get_ip())
+            op = arith_d.IndexCastOp(mlir_type, op.result, ip=self.builder.get_ip())
+            op.attributes[type_hint] = UnitAttr.get()
+            return op
         else:  # tensor (memref)
-            op, generic_block = self.get_generic_wrapper(val, mlir_type)
+            op, generic_block = self.get_generic_wrapper(val, mlir_type, type_hint)
             with InsertionPoint(generic_block):
                 # add cast op to block
                 value = allo_d.FixedToIntOp(

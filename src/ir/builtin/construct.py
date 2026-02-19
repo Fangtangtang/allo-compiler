@@ -15,13 +15,12 @@ class StreamHandler(BuiltinHandler):
     def build(self, node, *args):
         assert isinstance(node.args[0], ast.Name)
         name = node.args[0].id
-        dtype, shape, _, is_unsign = self.builder.parse_type_ann(node.args[1])
+        dtype, shape, _, type_hint = self.builder.parse_type_ann(node.args[1])
         stream_type = allo_d.StreamType.get(dtype.build(), depth=dtype.depth)
         op = allo_d.stream_global(
             name, stream_type, shape, ip=self.builder.get_global_ip()
         )
-        if is_unsign:
-            op.attributes["unsigned"] = UnitAttr.get()
+        op.attributes[type_hint] = UnitAttr.get()
         return op
 
 
@@ -65,14 +64,13 @@ class StreamGetHandler(BuiltinHandler):
         affine_map = AffineMap.get(
             dim_count=len(ivs), symbol_count=len(symbols), exprs=indices
         )
-        result, is_unsign = self.builder.build_type(node.args[2])
-        op = allo_d.get_stream_global(
+        result, type_hint = self.builder.build_type(node.args[2])
+        op = allo_d.GlobalStreamGetOp(
             result,
             name,
             ivs + symbols,
             AffineMapAttr.get(affine_map),
             ip=self.builder.get_ip(),
         )
-        if is_unsign:
-            op.attributes["unsigned"] = UnitAttr.get()
+        op.attributes[type_hint] = UnitAttr.get()
         return op

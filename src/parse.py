@@ -7,7 +7,7 @@ import numpy as np
 from collections.abc import Callable
 from collections import defaultdict
 from .ir.utils import SymbolTable, get_global_vars
-from .ir.ast_processor import ASTProcessor
+from .ir.ast_preprocessor import ASTPreProcessor
 from .ir.ir_builder import IRBuilder
 from .passes.memory import DTensor
 from allo.utils import register_dialect, construct_kernel_name
@@ -48,7 +48,7 @@ def get_shard(dims):
 
 def parse(fn: Union[Callable, str], instantiate: list = None):
     symbol_table = SymbolTable()
-    ast_processor = ASTProcessor(symbol_table, global_symbols=get_global_vars(fn))
+    ast_processor = ASTPreProcessor(symbol_table, global_symbols=get_global_vars(fn))
     # process the top function
     node, top_name = ast_processor.process(fn, instantiate=instantiate)
     builder = IRBuilder(symbol_table)

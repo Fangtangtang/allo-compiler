@@ -26,7 +26,7 @@ from allo.memory import Layout
 from .builtin import BUILTIN_HANDLERS
 
 
-class ASTProcessor(ast.NodeTransformer):
+class ASTPreProcessor(ast.NodeTransformer):
     @contextmanager
     def namespace(self, node: ast.FunctionDef):
         name = node.name

@@ -5,14 +5,6 @@ Allo uses a Python-based domain-specific language (DSL) that requires **strict t
 
 *🔀 for dataflow programming
 
-## Program Structure
-An Allo program consists of [**functions**](#function-definition) annotated with specific decorators. Currently supported decorators include:
-
-* `@kernel`: Defines a basic Allo kernel.
-* 🔀`@unit()`: Defines an SPMW module.
-* 🔀`@work(mapping: list[int], inputs=None, outputs=None)`: Defines a work within an SPMW module. 
-    * A function annotated with `@work` must be declared inside a `@unit` function and cannot exist independently.
-
 ## Data Types
 
 ### Base Data Types
@@ -182,7 +174,6 @@ def kernel(A: int32[M], B: int32[M]) -> (int32[M], int32[M]):
         res0[i] = A[i] + 1
         res1[i] = B[i] + 1
     return res0, res1
-
 ```
 The caller can unpack the returned tuple:
 
@@ -414,14 +405,93 @@ r: int32 = 0
 r: int32 = 2
 ```
 
+### Conditional Statements
+Allo supports Python-like conditional statements with `if`, `elif`, and `else`:
+
+```python
+if condition:
+    # then-block
+elif other_condition:
+    # elif-block
+else:
+    # else-block
+```
+
+* Nested `if` statements are supported.
+* The condition expression must evaluate to a boolean-compatible type.
+    * If a condition is a [compile-time constant](#compile-time-constants), Allo performs Dead Code Elimination (DCE), removing the dead branch if the condition is `False`.
+
+
+### Loop Statements
+**Restriction**: `break` and `continue` statements are not supported.
+
+#### For Loops
+Allo supports Python-like `for` loops using `range`.
+
+```python
+for i in range(start, end, step):
+    ...
+```
+* `start` (optional): default to 0, must evaluate to a index-compatible type.
+* `end` (required) must evaluate to a index-compatible type.
+* `step` (optional): default to 1, must evaluate to a index-compatible type.
+
+If `range` is called with two arguments, they are interpreted as:
+```python
+range(start, end)   # start = first argument, end = second argument
+```
+
+#### While Loops
+`while` loops also follow Python syntax:
+```python
+while condition:
+    # loop body
+```
+The condition expression must evaluate to a boolean-compatible type.
+
+#### Nested Loops
+`allo.grid` provides a shorthand for nested loops:
+```python
+for i0, i1, ..., iN  in allo.grid(dim0, dim1, ..., dimN) 
+```
+Generates N nested loops. Loop `i_k` iterates from 0 (inclusive) to `dimk` (exclusive) with step 1. Loops are nested from outermost (`dim0`) to innermost (`dimN`).
+
+`dimk` must evaluate to a index-compatible type.
+
+```python
+# 3D grid: Equivalent to three nested for loops
+for i, j, k in allo.grid(32, 32, 32):
+    C[i, j] += A[i, k] * B[k, j]
+
+# 2D grid
+for i, j in allo.grid(M, M):
+    res[i, j] = C[i, j] + 1
+```
+
 ### Meta-Programming
 #### Meta For (Compile-Time Loop Unrolling)
+<!-- TODO -->
 
 ## Built-in Functions
 ### 🔀Meta Functions
 
+## Programs
+An Allo program consists of [**functions**](#function-definition) annotated with specific decorators. Currently supported decorators include:
+
+* `@kernel`: Defines a basic Allo kernel.
+* 🔀`@unit()`: Defines an SPMW module.
+* 🔀`@work(mapping: list[int], inputs=None, outputs=None)`: Defines a work within an SPMW module. 
+    * A function annotated with `@work` must be declared inside a `@unit` function and cannot exist independently.
+
+### Kernels
+
+### 🔀`unit`s
+
+### 🔀`work`s
+
 ## Others
 ### Templates
+<!-- TODO -->
 
 ### Compile-Time Constants
 <!-- TODO: different levels -->

@@ -85,7 +85,7 @@ class SetBitsHandler(BuiltinHandler):
         base = self.builder.get_op_result(self.builder.visit(node.args[0].value))
         bits = node.args[0].slice
         if isinstance(bits, ast.Slice):  # set slice
-            return allo_d.SetIntSliceOp(
+            op = allo_d.SetIntSliceOp(
                 result,
                 base,
                 self.builder.get_op_result(self.builder.visit(bits.upper)),
@@ -94,13 +94,15 @@ class SetBitsHandler(BuiltinHandler):
                 ip=self.builder.get_ip(),
             )
         else:
-            return allo_d.SetIntBitOp(
+            op = allo_d.SetIntBitOp(
                 result,
                 base,
                 self.builder.get_op_result(self.builder.visit(bits)),
                 value,
                 ip=self.builder.get_ip(),
             )
+        op.attributes[type_hint] = UnitAttr.get()
+        return op
 
 
 @register_builtin_handler("get_bits")
@@ -111,7 +113,7 @@ class GetBitsHandler(BuiltinHandler):
         base = self.builder.get_op_result(self.builder.visit(node.args[0].value))
         bits = node.args[0].slice
         if isinstance(bits, ast.Slice):  # get slice
-            return allo_d.GetIntSliceOp(
+            op = allo_d.GetIntSliceOp(
                 result,
                 base,
                 self.builder.get_op_result(self.builder.visit(bits.upper)),
@@ -119,9 +121,11 @@ class GetBitsHandler(BuiltinHandler):
                 ip=self.builder.get_ip(),
             )
         else:
-            return allo_d.GetIntBitOp(
+            op = allo_d.GetIntBitOp(
                 result,
                 base,
                 self.builder.get_op_result(self.builder.visit(bits)),
                 ip=self.builder.get_ip(),
             )
+        op.attributes[type_hint] = UnitAttr.get()
+        return op

@@ -457,6 +457,7 @@ class ASTProcessor(ast.NodeTransformer):
             ),
             args=[
                 node,
+                ast.Name(id=node.dtype.type_hint(), ctx=ast.Load()),
                 self.get_ast_annotaiton(
                     target_dtype, node.shape, getattr(node, "spec", None)
                 ),
@@ -601,12 +602,18 @@ class ASTProcessor(ast.NodeTransformer):
         if isinstance(node.slice, ast.Slice):  # slice
             assert node.slice.lower and node.slice.upper
             node.slice.lower, l_symbol = self.visit_symbol(node.slice.lower)
-            node.slice.upper, u_symbol = self.visit_symbol(node.slice.upper)
+            node.slice.upper, u_symbol = self.visit_symbol(
+                ast.BinOp(node.slice.upper, ast.Sub(), ast.Constant(value=1))
+            )  # FIXME: this actually break python's convention
             if node.slice.step:
                 node.slice.step, s_symbol = self.visit_symbol(node.slice.step)
                 assert isinstance(s_symbol, sympy.Integer) and s_symbol == 1
-            if l_symbol and u_symbol and isinstance(u_symbol - l_symbol, sympy.Integer):
-                size = int(u_symbol - l_symbol)
+            if (
+                l_symbol is not None
+                and u_symbol is not None
+                and isinstance(u_symbol - l_symbol, sympy.Integer)
+            ):
+                size = int(u_symbol - l_symbol) + 1
                 assert size > 0, "upper bound must be greater than lower bound"
                 node.dtype = UInt(size)
             node.shape = tuple()
@@ -747,10 +754,8 @@ class ASTProcessor(ast.NodeTransformer):
         if target_dtype is not None:
             value = self.visit_cast(value, target_dtype)
             value = self.visit_broadcast(value, target_dtype, target_shape)
-
         target.dtype, target.shape = value.dtype, value.shape
-
-        if isinstance(target, ast.Subscript) and len(target.shape) == 0:
+        if isinstance(target, ast.Subscript) and len(target.value.shape) == 0:
             # set bit or set slice
             annotation = self.get_ast_annotaiton(
                 target.value.dtype, target.value.shape, None
@@ -764,7 +769,8 @@ class ASTProcessor(ast.NodeTransformer):
                 args=[target, value, annotation],
                 keywords=[],
             )
-            target = target.value
+            target = copy.deepcopy(target.value)
+            target.ctx = ast.Store()
             value = set_bits_op
             value.dtype, value.shape = target.dtype, target.shape
         else:

@@ -115,8 +115,21 @@ Type @ Refinement
 ```
 
 #### 🔀Tensor Layouts
+**Note:** reading dataflow [unit and work definitions](#programs) helps understanding.
 
-<!-- TODO -->
+The `Layout` class provides a declarative way to specify how global tensors are partitioned and mapped to [works](#works).
+It encodes a partitioning scheme for a tensor. For each tensor dimension, specify either:
+* `Shard(axis)`: Partition this dimension across the specified grid axis
+* `Replicate`: Keep this dimension fully replicated across all works
+
+For example:
+```python
+from allo.memory import Layout
+
+S = Layout.Shard   # Shorthand for sharding
+R = Layout.Replicate  # Shorthand for replication
+```
+`local_A: int32[64, 64] @ [S(0), R]`: Shard first dimension on grid axis 0, replicate second dimension
 
 ## Function Definition 
 
@@ -516,12 +529,21 @@ Symbols include:
 * Names of resource declared inside the unit (e.g., streams).
 
 ### 🔀Works
-A function decorated with `@work(mapping: list[int], inputs=None, outputs=None)` declares a set of work instances defined by the same work program. The parameters are:
-* `mapping`: Defines a high-dimensional grid, where each grid point corresponds to one work instance. Must be a list of [compile-time constants](#compile-time-constants) (positive integer).
+A function decorated with `@work(mapping: list[int], inputs=None, outputs=None)` declares a set of work instances defined by the same work program. The function signature **must not have a return value**. 
+The parameters are:
+* `mapping`: Defines a high-dimensional grid, where each grid point corresponds to one work instance. Must be a list of [compile-time constants](#compile-time-constants) (positive integer). Grid axes are 0-based integers.
+    * For example:
+        ```txt
+        Kernel mapping: [P0, P1, P2] -> 3D grid with axes 0, 1, 2
+                         |   |   |
+                         0   1   2  <- grid axes
+        ```
 * `inputs` (optional): A list of [symbols](#symbols-in-a-unit) from the top-level unit's namespace. These symbols are **aliased to the first `len(inputs)` arguments** of the function signature, in order from left to right.
 * `outputs` (optional): A list of [symbols](#symbols-in-a-unit) from the top-level unit's namespace. These symbols are **aliased to the last `len(outputs)` arguments** of the function signature, in order from right to left.
 
 The length of the function's parameter list must equal `len(inputs) + len(outputs)`.
+Each function parameter must be a [tensor type](#tensor-types), optionally annotated with a [layout refinement type](#tensor-layouts). If the layout refinement type is omitted, the tensor defaults to replicated along all grid dimensions (i.e., every work instance receives the full tensor).
+
 The function body describes the behavior of this work instance.
 Call expressions inside the function body can invoke **other units**, enabling hierarchical design.
 
@@ -534,9 +556,30 @@ def top(A: int32[1024], B: int32[1024]):
     def core(local_A: int32[1024], local_B: int32[1024]):
         local_B[:] = local_A + 1
 ```
-Explanation:
+**Explanation**:
 * `local_A` is an alias for the top-level unit's input `A`. Because it is used as a work input, this automatically makes `A` an input of the unit `top`.
 * `local_B` is an alias for the top-level unit's output `B`. Because it is used as a work output, this automatically makes `B` an output of the unit `top`.
+
+```python
+@spmw.unit()
+def top(A: int32[1024], B: int32[1024]):
+    # grid: (4,)
+    @spmw.work(mapping=[4], inputs=[A], outputs=[B])
+    def core(local_A: int32[1024] @ [S(0)], local_B: int32[1024] @ [S(0)]):
+        local_B[:] = local_A + 1
+```
+**Explanation**: This defines works over a 1D grid of size 4.
+The work argument types use [Tensor Layouts refinement types](#tensor-layouts). The annotation `[S(0)]` specifies that the first dimension of the 1D tensor is sharded along grid dimension `0`.
+Since the global tensor size is 1024 and the grid size is 4, each work instance receives a local tile of size: `1024 // 4 = 256`.
+Because `local_A` and `local_B` are aliases of the top unit's `A` and `B`, for each grid point:
+* `local_A` refers to a 256-element shard of `A`
+* `local_B` refers to a 256-element shard of `B`
+
+Respectively, the works operate on disjoint slices:
+* `A[0:256]` -> Work 0 -> `B[0:256]`
+* `A[256:512]` -> Work 1 -> `B[256:512]`
+* `A[512:768]` -> Work 2 -> `B[512:768]`
+* `A[768:1024]` -> Work 3 -> `B[768:1024]`
 
 #### Scoping Rules
 All [symbols](#symbols-in-a-unit) defined inside the top unit are visible to its works. 

@@ -474,20 +474,74 @@ for i, j in allo.grid(M, M):
 
 ## Built-in Functions
 ### 🔀Meta Functions
+#### `get_wid()`
+<!-- TODO -->
+
 
 ## Programs
 An Allo program consists of [**functions**](#function-definition) annotated with specific decorators. Currently supported decorators include:
 
-* `@kernel`: Defines a basic Allo kernel.
-* 🔀`@unit()`: Defines an SPMW module.
-* 🔀`@work(mapping: list[int], inputs=None, outputs=None)`: Defines a work within an SPMW module. 
+* [`@kernel`](#kernels): Defines a basic Allo kernel.
+* 🔀[`@unit()`](#units): Defines an SPMW module.
+* 🔀[`@work(mapping: list[int], inputs=None, outputs=None)`](#works): Defines a work within an SPMW module. 
     * A function annotated with `@work` must be declared inside a `@unit` function and cannot exist independently.
 
 ### Kernels
+<!-- TODO -->
 
-### 🔀`unit`s
+### 🔀Units
+A Unit is a function decorated with `@unit()`, which declares a dataflow module. The function signature **must not have a return value**. The parameter list specifies the module's inputs and outputs: inputs are read-only, outputs are write-only, and they **must not overlap**.
 
-### 🔀`work`s
+A unit defines a namespace for the dataflow module. Inside the function body, you can define resources (e.g., [`stream`](#stream)) and [`work`](#works) that belong to this module. 
+**Units cannot be nested.**
+
+For example:
+```python
+@spmw.unit()
+def top(A: int32[16, 16], B: int32[16, 16]):
+    # define stream arrays
+    ...
+
+    # work1
+    ...
+    # work2
+    ...
+```
+
+**Restrictions**: forward reference is currently not supported. Please declare resources before works.
+
+#### Symbols in a Unit
+Symbols include:
+* The parameters of the unit
+* Names of resource declared inside the unit (e.g., streams).
+
+### 🔀Works
+A function decorated with `@work(mapping: list[int], inputs=None, outputs=None)` declares a set of work instances defined by the same work program. The parameters are:
+* `mapping`: Defines a high-dimensional grid, where each grid point corresponds to one work instance. Must be a list of [compile-time constants](#compile-time-constants) (positive integer).
+* `inputs` (optional): A list of [symbols](#symbols-in-a-unit) from the top-level unit's namespace. These symbols are **aliased to the first `len(inputs)` arguments** of the function signature, in order from left to right.
+* `outputs` (optional): A list of [symbols](#symbols-in-a-unit) from the top-level unit's namespace. These symbols are **aliased to the last `len(outputs)` arguments** of the function signature, in order from right to left.
+
+The length of the function's parameter list must equal `len(inputs) + len(outputs)`.
+The function body describes the behavior of this work instance.
+Call expressions inside the function body can invoke **other units**, enabling hierarchical design.
+
+For example:
+```python
+@spmw.unit()
+def top(A: int32[1024], B: int32[1024]):
+    # grid: (1,)
+    @spmw.work(mapping=[1], inputs=[A], outputs=[B])
+    def core(local_A: int32[1024], local_B: int32[1024]):
+        local_B[:] = local_A + 1
+```
+Explanation:
+* `local_A` is an alias for the top-level unit's input `A`. Because it is used as a work input, this automatically makes `A` an input of the unit `top`.
+* `local_B` is an alias for the top-level unit's output `B`. Because it is used as a work output, this automatically makes `B` an output of the unit `top`.
+
+#### Scoping Rules
+All [symbols](#symbols-in-a-unit) defined inside the top unit are visible to its works. 
+
+However, if a symbol appears in a work's `inputs` or `outputs` in the  decorator, it is aliased to a corresponding work parameter. In this case, the original symbol is shadowed and cannot be directly accessed inside the work's function body.
 
 ## Others
 ### Templates

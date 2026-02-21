@@ -1,7 +1,6 @@
 # Copyright Allo authors. All Rights Reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-import json
 from typing import Union
 import numpy as np
 from collections.abc import Callable

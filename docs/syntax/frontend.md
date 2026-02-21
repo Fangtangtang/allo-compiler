@@ -584,7 +584,7 @@ Respectively, the works operate on disjoint slices:
 #### Scoping Rules
 All [symbols](#symbols-in-a-unit) defined inside the top unit are visible to its works. 
 
-However, if a symbol appears in a work's `inputs` or `outputs` in the  decorator, it is aliased to a corresponding work parameter. In this case, the original symbol is shadowed and cannot be directly accessed inside the work's function body.
+However, if a symbol appears in a work's `inputs` or `outputs` in the decorator, it is aliased to a corresponding work parameter. In this case, the original symbol is shadowed and cannot be directly accessed inside the work's function body.
 
 ## Others
 ### Templates

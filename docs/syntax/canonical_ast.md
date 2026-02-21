@@ -24,7 +24,14 @@ The canonical AST mainly contains the following nodes.
 
 ### `ast.Constant`
 
-### ⭐`ast.Subscript`
+### `ast.Subscript`
+`ast.Subscript` represents indexed access expressions in the canonical AST. It is used for:
+* Accessing a tensor slice
+* Accessing a tensor element
+* Accessing specific bits of a scalar
+* Any other structured indexing operation
+
+f slicing syntax (`ast.Slice`) is used, all optional parameters are explicitly filled in.
 
 ### `ast.BoolOp`
 
@@ -47,6 +54,14 @@ Therefore, such assignments remain standard assignment statements in the canonic
 All assignment statements (except [the special cases](#astassign)) are canonicalized to `AnnAssign`.
 
 ### `ast.For`
+Loop structures except `while` loops are transformed to `for` loop.
+
+All optional `range` arguments are explicitly filled in.
+
+The `type_comment` field of `ast.For` is used to encode additional loop semantics.
+For example: `"unroll"` indicates that the loop corresponds to a compile-time unrolled loop (e.g., a [`meta.for`](./frontend.md/#meta-for-compile-time-loop-unrolling) construct).
+
+These annotations do not change the structural representation of the loop but provide semantic guidance for later compilation stages.
 
 ### `ast.While`
 

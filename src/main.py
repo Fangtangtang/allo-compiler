@@ -19,7 +19,9 @@ def build(fn: Union[Callable, str], instantiate: list = None, typing: str = None
     typing = "hls" if typing is None else typing
     with ir_builder_config_context(typing):
         symbol_table = SymbolTable()
-        ast_processor = ASTPreProcessor(symbol_table, global_symbols=get_global_vars(fn))
+        ast_processor = ASTPreProcessor(
+            symbol_table, global_symbols=get_global_vars(fn)
+        )
         # process the top function
         node, top_name = ast_processor.process(fn, instantiate=instantiate)
         for name, constant in symbol_table.constants.items():

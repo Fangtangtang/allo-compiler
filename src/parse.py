@@ -189,7 +189,7 @@ def parse(fn: Union[Callable, str], instantiate: list = None):
     with context:
         mlir_pass_manager.parse(pipeline).run(mod.operation)
 
-    # replace_stream_arrays(mod)
+    replace_stream_arrays(mod)
 
     with open("simplified_module.mlir", "w") as f:
         f.write(str(mod))

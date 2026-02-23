@@ -11,13 +11,13 @@ R = Layout.Replicate
 
 
 def test_shard_1D():
-@spmw.unit()
-def top(A: int32[1024], B: int32[1024]):
-    @spmw.work(mapping=[4], inputs=[A], outputs=[B])
-    def core(local_A: int32[1024] @ [S(0)], local_B: int32[1024] @ [S(0)]):
-        local_B[:] = local_A + 1
+    @spmw.unit()
+    def top(A: int32[1024], B: int32[1024]):
+        @spmw.work(mapping=[4], inputs=[A], outputs=[B])
+        def core(local_A: int32[1024] @ [S(0)], local_B: int32[1024] @ [S(0)]):
+            local_B[:] = local_A + 1
 
-    s = process_spmw(top)
+        s = process_spmw(top)
 
 
 def test_shard_2D():

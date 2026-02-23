@@ -169,11 +169,11 @@ def test_stream_array():
 
 
 if __name__ == "__main__":
-    test_shard_1D_1()
-    test_shard_1D_2()
-    test_shard_1D_3()
-    test_shard_1D_4()
-    test_scalar_stream_1()
-    test_scalar_stream_2()
+    # test_shard_1D_1()
+    # test_shard_1D_2()
+    # test_shard_1D_3()
+    # test_shard_1D_4()
+    # test_scalar_stream_1()
+    # test_scalar_stream_2()
     test_tensor_stream()
-    test_stream_array()
+    # test_stream_array()

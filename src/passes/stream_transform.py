@@ -33,11 +33,7 @@ def replace_stream_arrays(module):
         for op in operations:
             if isinstance(op, (allo_d.GlobalStreamGetOp, allo_d.GlobalStreamPutOp)):
                 stream_sym = op.attributes["global"].value
-                print(op.map)
-                for expr in op.map.value.results:
-                    expr = AffineAddExpr(expr)
-                    # expr.lhs = expr.rhs
-                    print(dir(expr), expr.lhs)
+                allo_d.simplify_stream_affine_map(op)
                 if stream_sym in stream_arrays:
                     is_put = isinstance(op, allo_d.GlobalStreamPutOp)
                     num_indices = len(op.operands)

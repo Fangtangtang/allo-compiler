@@ -11,7 +11,7 @@ from .ir.ir_builder import IRBuilder
 from .passes.memory import DTensor
 from allo.utils import register_dialect, construct_kernel_name
 import allo._mlir.extras.types as mlir_types
-from .passes.stream_transform import replace_stream_arrays
+from .passes.stream import replace_stream_arrays
 from allo._mlir.ir import (
     Module,
     Context,

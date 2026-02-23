@@ -1,7 +1,7 @@
 # Copyright Allo authors. All Rights Reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-import json
+import islpy as isl
 from collections import defaultdict
 from allo._mlir.ir import (
     StringAttr,
@@ -15,7 +15,6 @@ from allo._mlir.ir import (
 from allo._mlir.dialects import (
     allo as allo_d,
     func as func_d,
-    arith as arith_d,
 )
 
 
@@ -26,14 +25,12 @@ def replace_stream_arrays(module):
         if isinstance(op, allo_d.StreamGlobalOp) and len(op.shape) > 0:
             stream_arrays[op.sym_name.value] = op
 
-    stream_map = defaultdict(dict)
     new_streams = {}
-    ops_to_erase = []
 
     def replace_recursive(operations, work_name):
         for op in operations:
-            with op.context, Location.unknown():
-                if isinstance(op, (allo_d.GlobalStreamGetOp, allo_d.GlobalStreamPutOp)):
+            if isinstance(op, (allo_d.GlobalStreamGetOp, allo_d.GlobalStreamPutOp)):
+                with op.context, Location.unknown():
                     stream_sym = op.attributes["global"].value
                     allo_d.simplify_stream_affine_map(op)
                     aff_map = AffineMapAttr(op.map).value
@@ -83,7 +80,11 @@ def replace_stream_arrays(module):
                         )
                         op.result.replace_all_uses_with(new_get.result)
 
-                    ops_to_erase.append(op)
+                    op.operation.erase()
+            else:
+                for region in op.regions:
+                    for block in region.blocks:
+                        replace_recursive(block.operations, work_name)
 
     for op in module.body.operations:
         if isinstance(op, func_d.FuncOp):
@@ -91,11 +92,5 @@ def replace_stream_arrays(module):
             for block in op.body:
                 replace_recursive(block.operations, name)
 
-    for op in ops_to_erase:
-        op.operation.erase()
-
     for op in stream_arrays.values():
         op.operation.erase()
-
-    with open("stream_map.json", "w") as f:
-        json.dump(stream_map, f, indent=4)

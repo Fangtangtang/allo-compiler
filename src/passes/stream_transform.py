@@ -8,8 +8,9 @@ from allo._mlir.ir import (
     FlatSymbolRefAttr,
     InsertionPoint,
     Location,
-    AffineBinaryExpr,
-    AffineAddExpr,
+    AffineMap,
+    AffineMapAttr,
+    AffineConstantExpr,
 )
 from allo._mlir.dialects import (
     allo as allo_d,
@@ -31,64 +32,56 @@ def replace_stream_arrays(module):
 
     def replace_recursive(operations, work_name):
         for op in operations:
-            if isinstance(op, (allo_d.GlobalStreamGetOp, allo_d.GlobalStreamPutOp)):
-                stream_sym = op.attributes["global"].value
-                allo_d.simplify_stream_affine_map(op)
-                if stream_sym in stream_arrays:
+            with op.context, Location.unknown():
+                if isinstance(op, (allo_d.GlobalStreamGetOp, allo_d.GlobalStreamPutOp)):
+                    stream_sym = op.attributes["global"].value
+                    allo_d.simplify_stream_affine_map(op)
+                    aff_map = AffineMapAttr(op.map).value
+                    assert aff_map.n_inputs == 0, "fail to resolve for now"
+                    indices = [AffineConstantExpr(exp).value for exp in aff_map.results]
+                    assert stream_sym in stream_arrays
                     is_put = isinstance(op, allo_d.GlobalStreamPutOp)
-                    num_indices = len(op.operands)
-                    if is_put:
-                        num_indices -= 1  # Last one is value
 
-                    current_indices = []
-                    for i in range(num_indices):
-                        idx_op = op.operands[i].owner
-                        if isinstance(idx_op, arith_d.ConstantOp):
-                            val = idx_op.value.value
-                            current_indices.append(str(val))
-                        else:
-                            raise RuntimeError(
-                                f"Stream array index not constant {idx_op}"
-                            )
-
-                    new_name = f"{stream_sym}_{'_'.join(current_indices)}"
+                    new_name = f"{stream_sym}_{"_".join(map(str, indices))}"
 
                     # Create new stream Op if not exists
                     if new_name not in new_streams:
-                        with InsertionPoint(module.body), Location.unknown():
-                            orig_op = stream_arrays[stream_sym]
-                            new_op = orig_op.clone()
-                            new_op.sym_name = StringAttr.get(new_name)
-                            if "dim" in new_op.attributes:
-                                del new_op.attributes["dim"]
-                            new_streams[new_name] = new_op
+                        stream = stream_arrays[stream_sym]
+                        new_op = allo_d.stream_global(
+                            new_name, stream.element_type, [], ip=InsertionPoint(stream)
+                        )
+                        new_streams[new_name] = new_op
 
                     if is_put:
-                        stream_map[new_name]["source"] = work_name
+                        new_streams[new_name].attributes["source"] = StringAttr.get(
+                            work_name
+                        )
                     else:
-                        stream_map[new_name]["dest"] = work_name
+                        new_streams[new_name].attributes["dest"] = StringAttr.get(
+                            work_name
+                        )
 
-                    with InsertionPoint(op), Location.unknown():
-                        if is_put:
-                            val = op.operands[-1]
-                            new_put = allo_d.PutStreamGlobalOp(
-                                FlatSymbolRefAttr.get(new_name),
-                                [],
-                                val,
-                                ip=InsertionPoint(op),
-                            )
-                            if "map" in op.attributes:
-                                new_put.attributes["map"] = op.attributes["map"]
-                        else:
-                            new_get = allo_d.GetStreamGlobalOp(
-                                op.result.type,
-                                FlatSymbolRefAttr.get(new_name),
-                                [],
-                                ip=InsertionPoint(op),
-                            )
-                            if "map" in op.attributes:
-                                new_get.attributes["map"] = op.attributes["map"]
-                            op.result.replace_all_uses_with(new_get.result)
+                    if is_put:
+                        allo_d.put_stream_global(
+                            FlatSymbolRefAttr.get(new_name),
+                            [],
+                            op.operands[-1],
+                            AffineMapAttr.get(
+                                AffineMap.get(dim_count=0, symbol_count=0, exprs=[])
+                            ),
+                            ip=InsertionPoint(op),
+                        )
+                    else:
+                        new_get = allo_d.GlobalStreamGetOp(
+                            op.result.type,
+                            FlatSymbolRefAttr.get(new_name),
+                            [],
+                            AffineMapAttr.get(
+                                AffineMap.get(dim_count=0, symbol_count=0, exprs=[])
+                            ),
+                            ip=InsertionPoint(op),
+                        )
+                        op.result.replace_all_uses_with(new_get.result)
 
                     ops_to_erase.append(op)
 

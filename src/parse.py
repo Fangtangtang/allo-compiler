@@ -9,6 +9,7 @@ from .ir.utils import SymbolTable, get_global_vars
 from .ir.ast_preprocessor import ASTPreProcessor
 from .ir.ir_builder import IRBuilder
 from .passes.memory import DTensor
+from .passes.meta_programming import unroll_meta_for
 from allo.utils import register_dialect, construct_kernel_name
 import allo._mlir.extras.types as mlir_types
 from .passes.stream import replace_stream_arrays
@@ -185,6 +186,7 @@ def parse(fn: Union[Callable, str], instantiate: list = None):
     with open("unrolled_module.mlir", "w") as f:
         f.write(str(mod))
 
+    unroll_meta_for(mod)
     pipeline = "builtin.module(canonicalize)"
     with context:
         mlir_pass_manager.parse(pipeline).run(mod.operation)

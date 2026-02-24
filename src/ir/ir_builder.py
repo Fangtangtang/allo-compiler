@@ -489,8 +489,11 @@ class IRBuilder(ast.NodeVisitor):
                 upper_bound_operands=ub_bound_ivs,
                 ip=self.get_ip(),
             )
+            if node.type_comment is not None:
+                for_op.attributes["loop_type"] = StringAttr.get(node.type_comment)
             affine_d.AffineYieldOp([], ip=InsertionPoint(for_op.body))
         else:
+            assert node.type_comment != "unroll"
             lb = self.get_op_result(self.visit(args[0]))
             rb = self.get_op_result(self.visit(args[1]))
             step = self.get_op_result(self.visit(args[2]))

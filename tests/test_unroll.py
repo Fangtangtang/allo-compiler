@@ -156,24 +156,26 @@ def test_stream_array():
         @spmw.work(mapping=[1], inputs=[A])
         def producer(local_A: int32[16, 16]):
             pi = spmw.get_wid()
-            for i, j in allo.grid(16, 16):
-                pipe[i + pi, j].put(local_A[i, j])
+            with allo.meta_for(16) as i:
+                with allo.meta_for(16) as j:
+                    pipe[i + pi, j].put(local_A[i, j])
 
         @spmw.work(mapping=[1], outputs=[B])
         def consumer(local_B: int32[16, 16]):
             pi = spmw.get_wid()
-            for i, j in allo.grid(16, 16):
-                local_B[i, j] = pipe[i + pi, j].get()
+            with allo.meta_for(16) as i:
+                with allo.meta_for(16) as j:
+                    local_B[i, j] = pipe[i + pi, j].get()
 
     s = parse(top2)
 
 
 if __name__ == "__main__":
-    # test_shard_1D_1()
-    # test_shard_1D_2()
-    # test_shard_1D_3()
-    # test_shard_1D_4()
-    # test_scalar_stream_1()
-    # test_scalar_stream_2()
+    test_shard_1D_1()
+    test_shard_1D_2()
+    test_shard_1D_3()
+    test_shard_1D_4()
+    test_scalar_stream_1()
+    test_scalar_stream_2()
     test_tensor_stream()
-    # test_stream_array()
+    test_stream_array()

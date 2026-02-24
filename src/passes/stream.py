@@ -32,11 +32,12 @@ def replace_stream_arrays(module):
             if isinstance(op, (allo_d.GlobalStreamGetOp, allo_d.GlobalStreamPutOp)):
                 with op.context, Location.unknown():
                     stream_sym = op.attributes["global"].value
+                    if stream_sym not in stream_arrays:
+                        continue
                     allo_d.simplify_stream_affine_map(op)
                     aff_map = AffineMapAttr(op.map).value
                     assert aff_map.n_inputs == 0, "fail to resolve for now"
                     indices = [AffineConstantExpr(exp).value for exp in aff_map.results]
-                    assert stream_sym in stream_arrays
                     is_put = isinstance(op, allo_d.GlobalStreamPutOp)
 
                     new_name = f"{stream_sym}_{"_".join(map(str, indices))}"

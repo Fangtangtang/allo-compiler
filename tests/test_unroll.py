@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import numpy as np
-from src.parse import parse, to_aie, to_hls
+from src.aie import parse, to_aie, to_hls
 import allo
 from allo.ir.types import int32, Stream
 from allo import spmw

@@ -1,0 +1,58 @@
+# Copyright Allo authors. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+import numpy as np
+from src.hls import to_hls
+import allo
+from allo.ir.types import int32, Stream
+from allo import spmw
+import tempfile
+
+
+def test_scalar_stream_1():
+    @spmw.unit()
+    def top1(A: int32[16, 16], B: int32[16, 16]):
+        pipe: Stream[int32]
+
+        @spmw.work(mapping=[1], inputs=[A])
+        def producer(local_A: int32[16, 16]):
+            pipe.put(local_A[0, 0])
+
+        @spmw.work(mapping=[1], outputs=[B])
+        def consumer(local_B: int32[16, 16]):
+            local_B[0, 0] = pipe.get()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        s = to_hls(top1, project=tmpdir)
+        np_A = np.random.randint(0, 100, (16, 16), dtype=np.int32)
+        np_B = np.zeros((16, 16), dtype=np.int32)
+        s(np_A, np_B)
+        assert np_A[0][0] == np_B[0][0]
+
+
+def test_scalar_stream_2():
+    @spmw.unit()
+    def top2(A: int32[16, 16], B: int32[16, 16]):
+        pipe: Stream[int32]
+
+        @spmw.work(mapping=[1], inputs=[A])
+        def producer(local_A: int32[16, 16]):
+            for i, j in allo.grid(16, 16):
+                pipe.put(local_A[i, j])
+
+        @spmw.work(mapping=[1], outputs=[B])
+        def consumer(local_B: int32[16, 16]):
+            for i, j in allo.grid(16, 16):
+                local_B[i, j] = pipe.get()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        s = to_hls(top2, project=tmpdir)
+        np_A = np.random.randint(0, 100, (16, 16), dtype=np.int32)
+        np_B = np.zeros((16, 16), dtype=np.int32)
+        s(np_A, np_B)
+        assert np.array_equal(np_A, np_B)
+
+
+if __name__ == "__main__":
+    test_scalar_stream_1()
+    test_scalar_stream_2()

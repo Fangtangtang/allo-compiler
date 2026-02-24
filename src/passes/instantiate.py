@@ -17,6 +17,7 @@ from allo._mlir.ir import (
     InsertionPoint,
     StringAttr,
     FlatSymbolRefAttr,
+    UnitAttr,
 )
 from allo._mlir.dialects import (
     allo as allo_d,
@@ -86,7 +87,7 @@ def instantiate_for_hls(module, top_name):
         entry_block = top_func.add_entry_block()
         attr.copy_attr(top_module, top_func, {"itypes", "otypes"}, allow_missing=False)
         entry_ip = InsertionPoint.at_block_begin(entry_block)
-
+        top_func.attributes["df.kernel"] = UnitAttr.get()  # FIXME
         # move resource to local
         with entry_ip:
             for name, op in resources.items():
@@ -104,6 +105,7 @@ def instantiate_for_hls(module, top_name):
                 else:
                     raise NotImplementedError
 
+    with InsertionPoint.at_block_begin(mod.body), Location.unknown():
         # call ops
         for grid_info in work_grids.values():
             grid_shape = grid_info["grid"]
@@ -112,6 +114,8 @@ def instantiate_for_hls(module, top_name):
             for dim in np.ndindex(*grid_shape):
                 function_name = construct_name(orig_func_name, dim)
                 instance = instance_copies[function_name]
+                # [NOTE]: backend do not support `.` in function names, backend use `startswith` to identify top module
+                hls_function_name = f"_{function_name.replace(".", "_")}"
                 symbols: dict[str, list] = collect_symbol_refs_in_function(instance)
                 symbol_names = sorted(symbols.keys())
                 itypes = instance.type.inputs
@@ -125,7 +129,11 @@ def instantiate_for_hls(module, top_name):
                     itypes.append(resource_op.result.type)
                     itype_hints += "_"  # FIXME
                 new_func = func.function(
-                    function_name, itypes, [], itype_hints=itype_hints, otype_hints=""
+                    hls_function_name,
+                    itypes,
+                    [],
+                    itype_hints=itype_hints,
+                    otype_hints="",
                 )
                 final_op = func_d.ReturnOp([], ip=InsertionPoint(new_func.entry_block))
                 # update arguments
@@ -160,10 +168,13 @@ def instantiate_for_hls(module, top_name):
                 # call the function in top module
                 func_d.CallOp(
                     [],
-                    FlatSymbolRefAttr.get(function_name),
+                    FlatSymbolRefAttr.get(hls_function_name),
                     args,
                     ip=entry_ip,
                 )
         func_d.ReturnOp([], ip=entry_ip)
 
+    for op in mod.body.operations:
+        if not isinstance(op, func_d.FuncOp):
+            op.erase()
     return mod

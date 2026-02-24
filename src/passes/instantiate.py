@@ -23,6 +23,7 @@ from allo._mlir.dialects import (
     allo as allo_d,
     arith as arith_d,
     func as func_d,
+    sdy as sdy_d,
 )
 
 
@@ -175,6 +176,6 @@ def instantiate_for_hls(module, top_name):
         func_d.ReturnOp([], ip=entry_ip)
 
     for op in mod.body.operations:
-        if not isinstance(op, func_d.FuncOp):
+        if isinstance(op, allo_d.StreamGlobalOp) or isinstance(op, sdy_d.MeshOp):
             op.erase()
     return mod

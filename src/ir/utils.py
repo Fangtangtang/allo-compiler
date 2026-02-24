@@ -58,10 +58,10 @@ class SymbolTable:
         return func_dict[key]
 
     def mangle_with_namespace(self, name: str, namespace: str) -> str:
-        return f"__{namespace}__{name}"
+        return f"{namespace}.{name}"
 
     def mangle_grid_name(self, work_name) -> str:
-        return f"{work_name}_mesh"
+        return f"{work_name}.mesh"
 
     @staticmethod
     def get_hash(arr):

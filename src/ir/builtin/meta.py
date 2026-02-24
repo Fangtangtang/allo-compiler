@@ -16,7 +16,7 @@ class WidHandler(BuiltinHandler):
         num = len(targets)
         callee = self.builder.current_func.name.value
         grid_name = self.builder.symbol_table.mangle_grid_name(callee)
-        builtin_func = f"{grid_name}_get_wid"
+        builtin_func = f"{grid_name}.get_wid"
         # insert function declaration in global
         results = [mlir_types.index()] * num
         func_type = FunctionType.get([], results)

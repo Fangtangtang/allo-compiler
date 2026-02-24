@@ -9,6 +9,7 @@ from .ir.utils import SymbolTable, get_global_vars
 from .ir.ast_preprocessor import ASTPreProcessor
 from .ir.ir_builder import IRBuilder
 from .passes.utils import parse_spmw_module
+from .passes.instantiate import instantiate_for_hls
 from .passes.meta_programming import unroll_meta_for
 from allo.utils import register_dialect, construct_kernel_name
 import allo._mlir.extras.types as mlir_types
@@ -118,3 +119,13 @@ def to_aie(fn: Union[Callable, str], instantiate: list = None):
     aie_mod.init_spmw(core_func_args, global_dtensors)
     aie_mod.build(skip=True)
     return aie_mod
+
+
+def to_hls(fn: Union[Callable, str], instantiate: list = None):
+    symbol_table = SymbolTable()
+    ast_processor = ASTPreProcessor(symbol_table, global_symbols=get_global_vars(fn))
+    # process the top function
+    node, top_name = ast_processor.process(fn, instantiate=instantiate)
+    builder = IRBuilder(symbol_table)
+    module = builder.build()
+    parsed = instantiate_for_hls(module, top_name)

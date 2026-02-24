@@ -147,3 +147,11 @@ def parse_spmw_module(module, top_name):
         "module": mod,
         "dtensors": dtensors,
     }
+
+
+def is_resource(op):
+    if isinstance(op, func_d.FuncOp):
+        return False
+    if isinstance(op, sdy_d.MeshOp):
+        return False
+    return True

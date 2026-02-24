@@ -5,7 +5,7 @@ import ast
 from contextlib import contextmanager
 import allo._mlir.extras.types as mlir_types
 from allo._mlir.extras.dialects.affine import AffExpr
-import allo._mlir.extras.dialects.sdy as sdy
+from allo._mlir.extras.dialects import sdy as sdy, func as func
 from allo._mlir.dialects import (
     bufferization as buf_d,
     func as func_d,
@@ -22,7 +22,6 @@ from allo._mlir.ir import (
     InsertionPoint,
     OpView,
     Value,
-    FunctionType,
     MemRefType,
     ShapedType,
     UnitAttr,
@@ -699,11 +698,14 @@ class IRBuilder(ast.NodeVisitor):
                 output_types.append(out_type)
                 output_hints.append(hint[0])
         # Build function
-        func_type = FunctionType.get(input_types, output_types)
-        func_op = func_d.FuncOp(name=node.name, type=func_type, ip=self.get_ip())
-        func_op.attributes["itypes"] = StringAttr.get("".join(input_hints))
-        func_op.attributes["otypes"] = StringAttr.get("".join(output_hints))
-        func_op.add_entry_block()
+        with self.get_ip():
+            func_op = func.function(
+                node.name,
+                input_types,
+                output_types,
+                itype_hints=input_hints,
+                otype_hints=output_hints,
+            )
         self.current_func = func_op
         self.reserved_bindings.clear()
         with self.block_scope():

@@ -63,11 +63,11 @@ def parse(fn: Union[Callable, str], instantiate: list = None):
     with InsertionPoint(mod.body), Location.unknown():
         for mesh_name, grid_info in work_grids.items():
             grid_shape = grid_info["grid"]
-            orig_func = symbol_map[grid_info["work"]]
             orig_func_name = grid_info["work"]
+            orig_func = symbol_map[orig_func_name]
             for dim in np.ndindex(*grid_shape):
                 func = orig_func.clone()
-                function_name = construct_kernel_name(grid_info["work"], dim)
+                function_name = construct_kernel_name(orig_func_name, dim)
                 func.sym_name = StringAttr.get(function_name)
                 func.attributes["tag"] = func.sym_name  # for aie backend
                 func_instances[orig_func_name][dim] = function_name

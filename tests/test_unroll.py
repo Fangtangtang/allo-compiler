@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import numpy as np
-from src.parse import parse, to_aie
+from src.parse import parse, to_aie, to_hls
 import allo
 from allo.ir.types import int32, Stream
 from allo import spmw
@@ -93,7 +93,8 @@ def test_scalar_stream_1():
         def consumer(local_B: int32[16, 16]):
             local_B[0, 0] = pipe.get()
 
-    s = parse(top1)
+    # s = parse(top1)
+    s = to_hls(top1)
 
 
 def test_scalar_stream_2():
@@ -171,11 +172,11 @@ def test_stream_array():
 
 
 if __name__ == "__main__":
-    test_shard_1D_1()
-    test_shard_1D_2()
-    test_shard_1D_3()
-    test_shard_1D_4()
+    # test_shard_1D_1()
+    # test_shard_1D_2()
+    # test_shard_1D_3()
+    # test_shard_1D_4()
     test_scalar_stream_1()
-    test_scalar_stream_2()
-    test_tensor_stream()
-    test_stream_array()
+    # test_scalar_stream_2()
+    # test_tensor_stream()
+    # test_stream_array()

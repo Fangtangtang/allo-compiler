@@ -25,13 +25,13 @@ def collect_symbol_refs_in_function(func_op: Operation):
     """
     Get symbol refs used in `func_op`. Symbols includes: global constant, streams, other 'function's
     """
-    symbols = set()
+    symbols = defaultdict(list)
 
     def collect_recursive(operations):
         for op in operations:
             for attr in op.attributes.values():
                 if isinstance(attr, FlatSymbolRefAttr):
-                    symbols.add(attr)
+                    symbols[attr.value].append(op)
             for region in op.regions:
                 for block in region.blocks:
                     collect_recursive(block.operations)
@@ -42,7 +42,7 @@ def collect_symbol_refs_in_function(func_op: Operation):
 
 
 def parse_spmw_module(module, top_name):
-    with module.context as ctx, Location.unknown():
+    with module.context, Location.unknown():
         mod = Module.create()
 
     symbol_map = {}

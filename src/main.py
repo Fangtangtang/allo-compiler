@@ -61,7 +61,8 @@ def to_hls(fn: Union[Callable, str], instantiate: list = None, project=None):
         if isinstance(func, func_d.FuncOp):
             allo_d.copy_on_write_on_function(func)
 
-    pipeline = "builtin.module(canonicalize)"
+    passes = ["lower-memcopy-ops", "canonicalize"]
+    pipeline = f'builtin.module({",".join(passes)})'
     with module.context:
         mlir_pass_manager.parse(pipeline).run(module.operation)
 

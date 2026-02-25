@@ -4,6 +4,7 @@
 import allo
 from allo.ir.types import float32, Stream
 from allo import spmw
+import allo.backend.hls as hls
 from src.hls import to_hls
 import numpy as np
 import tempfile
@@ -36,11 +37,12 @@ def test_producer_consumer():
     A = np.random.rand(M, N).astype(np.float32)
     B = np.zeros((M, N), dtype=np.float32)
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        mod = to_hls(top, project=tmpdir)
-        mod(A, B)
-        np.testing.assert_allclose(A + 1, B)
-        print("Passed!")
+    if hls.is_available("vitis_hls"):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mod = to_hls(top, project=tmpdir)
+            mod(A, B)
+            np.testing.assert_allclose(A + 1, B)
+            print("Passed!")
 
 
 if __name__ == "__main__":

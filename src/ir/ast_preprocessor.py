@@ -136,7 +136,8 @@ class ASTPreProcessor(ast.NodeTransformer):
             if name in scope.vars:
                 var = scope.vars[name]
                 if self.current_namespace is not None and hasattr(var, "type_comment"):
-                    if var.type_comment == "dtensor":
+                    # self.current_func -> not directly under UNIT (namespace)
+                    if self.current_func is not None and var.type_comment == "dtensor":
                         var.type_comment = (
                             "shared"  # update to mark it as shared resource
                         )

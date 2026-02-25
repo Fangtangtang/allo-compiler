@@ -1,8 +1,6 @@
 # Copyright Allo authors. All Rights Reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-import islpy as isl
-from collections import defaultdict
 from allo._mlir.ir import (
     StringAttr,
     FlatSymbolRefAttr,

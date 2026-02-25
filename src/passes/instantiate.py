@@ -88,9 +88,7 @@ def instantiate_for_hls(module, top_name):
         entry_block = top_func.add_entry_block()
         attr.copy_attr(top_module, top_func, {"itypes", "otypes"}, allow_missing=False)
         entry_ip = InsertionPoint.at_block_begin(entry_block)
-        top_func.attributes["dataflow"] = (
-            UnitAttr.get()
-        )  # to generate `dataflow` pragma
+        top_func.attributes["dataflow"] = UnitAttr.get()
         # move resource to local
         with entry_ip:
             for name, op in resources.items():

@@ -88,7 +88,9 @@ def instantiate_for_hls(module, top_name):
         entry_block = top_func.add_entry_block()
         attr.copy_attr(top_module, top_func, {"itypes", "otypes"}, allow_missing=False)
         entry_ip = InsertionPoint.at_block_begin(entry_block)
-        top_func.attributes["df.kernel"] = UnitAttr.get()  # FIXME
+        top_func.attributes["dataflow"] = (
+            UnitAttr.get()
+        )  # to generate `dataflow` pragma
         # move resource to local
         with entry_ip:
             for name, op in resources.items():
@@ -123,7 +125,10 @@ def instantiate_for_hls(module, top_name):
                 base_inputs = len(itypes)
                 assert "itypes" in instance.attributes
                 itype_hints = instance.attributes["itypes"].value
-                args = [top_func.arguments[t.global_id] for t in tensors]
+                args = []
+                for t in tensors:
+                    assert t.tile_shape == t.shape  # hls do not support sharding
+                    args.append(top_func.arguments[t.global_id])
                 for symbol in symbol_names:
                     resource_op = new_resources[symbol]
                     args.append(resource_op)

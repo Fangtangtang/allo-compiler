@@ -3,12 +3,13 @@
 
 import ast
 from .handler import BuiltinHandler, register_builtin_handler
-from allo._mlir.dialects import (
-    allo as allo_d,
-)
-from allo._mlir.ir import AffineMap, AffineMapAttr, UnitAttr
+from allo._mlir.dialects import allo as allo_d, memref as memref_d
+from allo._mlir.ir import AffineMap, AffineMapAttr, UnitAttr, StringAttr, TypeAttr
 
 
+##################################################
+# Stream Operations
+##################################################
 @register_builtin_handler("constrcut_stream")
 class StreamHandler(BuiltinHandler):
 
@@ -76,6 +77,29 @@ class StreamGetHandler(BuiltinHandler):
         return op
 
 
+##################################################
+# Memory Resource Operations
+##################################################
+@register_builtin_handler("set_mem")
+class MemorySetHandler(BuiltinHandler):
+    def build(self, node, *args):
+        symbol_name = node.args[0].id
+        dtype, hint = self.builder.build_type(node.args[2], True)
+        op = memref_d.GlobalOp(
+            sym_name=StringAttr.get(symbol_name),
+            type_=TypeAttr.get(dtype),
+            sym_visibility=StringAttr.get("private"),
+            ip=self.builder.get_global_ip(),
+        )
+        op.attributes[hint] = UnitAttr.get()
+        value = self.builder.get_op_result(self.builder.visit(node.args[1]))
+        get_op = memref_d.GetGlobalOp(dtype, symbol_name, ip=self.builder.get_ip())
+        memref_d.CopyOp(value, get_op.result, ip=self.builder.get_ip())
+
+
+##################################################
+# Bit Operations
+##################################################
 @register_builtin_handler("set_bits")
 class SetBitsHandler(BuiltinHandler):
     def build(self, node, *args):

@@ -49,6 +49,7 @@ class ASTPreProcessor(ast.NodeTransformer):
 
         self.symbols = ChainMap(getattr(node, "template_bindings", {}), self.symbols)
         self.current_func = node.name
+        self.meta_ops = []
         self.scopes.append(Scope())
 
         try:
@@ -57,6 +58,7 @@ class ASTPreProcessor(ast.NodeTransformer):
             self.scopes.pop()
             self.symbols = symbols_ckpt
             self.current_func = None
+            self.meta_ops = None
             self.meta_cond.clear()
 
     @contextmanager
@@ -85,6 +87,7 @@ class ASTPreProcessor(ast.NodeTransformer):
         self.current_func: str = None
         self.symbols = global_symbols
         self.work_meta = {}  # per work instance's meta data
+        self.meta_ops = None  # operations for meta setup
         # keep track of metaprogramming conditions, allow nesting
         self.meta_cond: list[bool] = []
 
@@ -131,7 +134,45 @@ class ASTPreProcessor(ast.NodeTransformer):
         """
         for scope in reversed(self.scopes):
             if name in scope.vars:
-                return scope.vars[name]
+                var = scope.vars[name]
+                if self.current_namespace is not None and hasattr(var, "type_comment"):
+                    if var.type_comment == "dtensor":
+                        var.type_comment = (
+                            "shared"  # update to mark it as shared resource
+                        )
+                        # register as meta operation
+                        target = ast.Name(id=name, ctx=ast.Store())
+                        target.dtype, target.shape = var.dtype, var.shape
+                        target.spec = var.spec
+                        op = ast.Assign(
+                            targets=[target],
+                            value=ast.Call(
+                                func=ast.Attribute(
+                                    value=ast.Name(id="__allo__", ctx=ast.Load()),
+                                    attr="get_mem",
+                                    ctx=ast.Load(),
+                                ),
+                                args=[
+                                    ast.Name(
+                                        id=self.symbol_table.mangle_with_namespace(
+                                            name, self.current_namespace
+                                        ),
+                                        ctx=ast.Load(),
+                                    ),
+                                    self.get_ast_annotaiton(
+                                        var.dtype, var.shape, var.spec
+                                    ),
+                                ],
+                                keywords=[],
+                            ),
+                        )
+                        ast.copy_location(
+                            op, self.symbol_table.functions[self.current_func]
+                        )
+                        self.meta_ops.append(op)
+                        scope.vars[name] = target
+                        return target
+                return var
             if name in scope.consts:
                 return scope.consts[name]
         if name in self.symbol_table.variables:
@@ -1395,10 +1436,34 @@ class ASTPreProcessor(ast.NodeTransformer):
             with self.namespace(node):
                 # arguments
                 for arg in node.args.args:
+                    arg.type_comment = "dtensor"  # dataflow args are dtensor by default
                     self.put_var(name=arg.arg, val=arg)
                 # unit region
                 node.body = self.visit_body(node.body)
                 node.body.append(ast.Return())
+                meta_ops = []
+                for arg in node.args.args:
+                    if arg.type_comment == "shared":  # TODO: should copy output back
+                        call_op = ast.Call(
+                            func=ast.Attribute(
+                                value=ast.Name(id="__allo__", ctx=ast.Load()),
+                                attr="set_mem",
+                                ctx=ast.Load(),
+                            ),
+                            args=[
+                                ast.Name(
+                                    id=self.symbol_table.mangle_with_namespace(
+                                        arg.arg, self.current_namespace
+                                    ),
+                                    ctx=ast.Load(),
+                                ),  # global
+                                ast.Name(id=arg.arg, ctx=ast.Load()),  # local
+                                self.get_ast_annotaiton(arg.dtype, arg.shape, arg.spec),
+                            ],
+                            keywords=[],
+                        )
+                        meta_ops.append(ast.Expr(call_op))
+                node.body = meta_ops + node.body
         else:
             with self.function_scope(node):
                 # arguments
@@ -1508,10 +1573,10 @@ class ASTPreProcessor(ast.NodeTransformer):
                     ),
                 )
                 ast.copy_location(op, node)
-                new_body = [op]
-                new_body.extend(self.visit_body(node.body))
+                self.meta_ops.append(op)
+                new_body = self.visit_body(node.body)
                 new_body.append(ast.Return())
-                node.body = new_body
+                node.body = self.meta_ops + new_body
                 self.work_meta.clear()
         call_node = ast.Call(
             func=ast.Name(id=node.name, ctx=ast.Load()), args=args, keywords=[]

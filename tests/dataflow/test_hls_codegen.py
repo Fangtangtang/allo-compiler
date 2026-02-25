@@ -60,23 +60,22 @@ def test_tensor_stream():
 
         @spmw.work(mapping=[1], inputs=[A])
         def producer(local_A: int32[16, 16]):
-            pi = spmw.get_wid()
             with allo.meta_for(16) as i:
                 with allo.meta_for(16) as j:
-                    pipe[i + pi, j].put(local_A[i, j])
+                    pipe[i, j].put(local_A[i, j])
 
         @spmw.work(mapping=[1], outputs=[B])
         def consumer(local_B: int32[16, 16]):
-            pi = spmw.get_wid()
             with allo.meta_for(16) as i:
                 with allo.meta_for(16) as j:
-                    local_B[i, j] = pipe[i + pi, j].get()
+                    local_B[i, j] = pipe[i, j].get()
 
-    s = to_hls(top)
-    np_A = np.random.randint(0, 100, (16, 16), dtype=np.int32)
-    np_B = np.zeros((16, 16), dtype=np.int32)
-    s(np_A, np_B)
-    assert np.array_equal(np_A, np_B)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        s = to_hls(top, project=tmpdir)
+        np_A = np.random.randint(0, 100, (16, 16), dtype=np.int32)
+        np_B = np.zeros((16, 16), dtype=np.int32)
+        s(np_A, np_B)
+        assert np.array_equal(np_A, np_B)
 
 
 if __name__ == "__main__":

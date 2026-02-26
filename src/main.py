@@ -16,7 +16,7 @@ from allo._mlir.passmanager import PassManager as mlir_pass_manager
 
 
 def build(fn: Union[Callable, str], instantiate: list = None, typing: str = None):
-    typing = "hls" if typing is None else typing
+    typing = "default" if typing is None else typing
     with ir_builder_config_context(typing):
         symbol_table = SymbolTable()
         ast_processor = ASTPreProcessor(

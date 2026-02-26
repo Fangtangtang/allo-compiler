@@ -3,7 +3,6 @@
 
 from collections import defaultdict
 from .memory import DTensor
-from allo._mlir.extras.dialects import sdy as sdy
 from allo._mlir.ir import (
     Module,
     Location,
@@ -13,11 +12,8 @@ from allo._mlir.ir import (
     FlatSymbolRefAttr,
 )
 from allo._mlir.dialects import (
-    allo as allo_d,
-    arith as arith_d,
     func as func_d,
     memref as memref_d,
-    sdy as sdy_d,
 )
 from allo.memory import Layout
 

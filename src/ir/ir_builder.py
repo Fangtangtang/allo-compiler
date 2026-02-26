@@ -5,14 +5,14 @@ import ast
 from contextlib import contextmanager
 import allo._mlir.extras.types as mlir_types
 from allo._mlir.extras.dialects.affine import AffExpr
-from allo._mlir.extras.dialects import sdy as sdy, func as func
+
+from allo._mlir.extras.dialects import allo as allo, func as func
 from allo._mlir.dialects import (
     bufferization as buf_d,
     func as func_d,
     memref as memref_d,
     affine as affine_d,
     scf as scf_d,
-    sdy as sdy_d,
     arith as arith_d,
 )
 from allo._mlir.ir import (
@@ -54,7 +54,7 @@ class IRBuilder(ast.NodeVisitor):
         self.symbol_table: SymbolTable = symbol_table
         self.scopes: list[Scope] = []
         self.ctx: Context = Context()
-        register_dialect(self.ctx, True)
+        register_dialect(self.ctx)
         self.module: Module = None
 
         self.current_func: func_d.FuncOp = None  # the function under construction
@@ -176,16 +176,6 @@ class IRBuilder(ast.NodeVisitor):
         if len(shape) == 0 and not force_memref:
             return dtype.build(), type_hint
         return MemRefType.get(shape, dtype.build()), type_hint
-
-    def build_work_arg_type(self, annotation: ast.Subscript, as_tensor: bool = True):
-        dtype, shape, spec, type_hint = self.parse_type_ann(annotation)
-        if as_tensor:
-            return (
-                mlir_types.tensor(*shape, element_type=dtype.build()),
-                spec,
-                type_hint,
-            )
-        return MemRefType.get(shape, dtype.build()), spec, type_hint
 
     def build_buffer(self, memref_type: MemRefType, type_hint: str):
         buffer = memref_d.AllocOp(memref_type, [], [], ip=self.get_ip())
@@ -580,25 +570,6 @@ class IRBuilder(ast.NodeVisitor):
     def visit_With(self, node: ast.With):
         raise NotImplementedError
 
-    def visit_work_interface(self, mesh_name, arg_list, as_tensor):
-        types, type_hints, shards = [], [], []
-        for in_arg in arg_list:
-            t_type, spec, type_hint = self.build_work_arg_type(
-                in_arg.annotation, as_tensor
-            )
-            types.append(t_type)
-            type_hints.append(type_hint)
-            shards.append(
-                sdy.tensor_sharding(
-                    mesh_name,
-                    [
-                        p.axis if isinstance(p, Layout.Shard) else -1
-                        for p in spec.partitions
-                    ],
-                )
-            )
-        return types, type_hints, shards
-
     def visit_work(self, callee: ast.FunctionDef):
         callee_name = callee.name
         grid, inputs, outputs = None, None, None
@@ -606,48 +577,24 @@ class IRBuilder(ast.NodeVisitor):
             if kw.arg == "mapping":
                 grid = [c.value for c in kw.value.elts]
             elif kw.arg == "inputs":
-                inputs = [
-                    self.to_tensor(self.get_op_result(self.visit(e)))
-                    for e in kw.value.elts
-                ]
+                inputs = [(self.get_op_result(self.visit(e))) for e in kw.value.elts]
             elif kw.arg == "outputs":
                 outputs = [self.get_op_result(self.visit(e)) for e in kw.value.elts]
-        # create work grid in global scope
-        with self.get_global_ip():
-            mesh = sdy.mesh(self.symbol_table.mangle_grid_name(callee_name), grid)
-        results = [
-            mlir_types.tensor(*o.type.shape, element_type=o.type.element_type)
-            for o in outputs
-        ]
-        local_types, _, in_shard = self.visit_work_interface(
-            mesh.sym_name.value, callee.args.args[: len(inputs)], True
-        )
-        output_types, otype_hints, out_shard = self.visit_work_interface(
-            mesh.sym_name.value, callee.args.args[len(inputs) :], False
-        )
-        with self.get_ip():
-            comp_op = sdy.SPMD.manual_computation(
-                results, inputs, in_shard, out_shard, len(grid), mesh.sym_name.value
+        shardings = []
+        for arg in callee.args.args:
+            # TODO: attach related attributes?
+            dtype, shape, spec, type_hint = self.parse_type_ann(arg.annotation)
+            shardings.append(
+                [p.axis if isinstance(p, Layout.Shard) else -1 for p in spec.partitions]
             )
-        block = comp_op.body.blocks.append(*local_types)
-        self.set_ip(block)
-        # convert inputs to buffer
-        args = [self.to_buffer(input_) for input_ in block.arguments]
-        # allocate buffer for outputs
-        out_args = [
-            self.build_buffer(o, type_hint=hint)
-            for o, hint in zip(output_types, otype_hints)
-        ]
-        args.extend(out_args)
-        func_d.CallOp([], FlatSymbolRefAttr.get(callee_name), args, ip=self.get_ip())
-        # convert output to tensor
-        rets = [self.to_tensor(self.get_op_result(o)) for o in out_args]
-        sdy_d.return_(rets, ip=self.get_ip())
-        self.pop_ip()
-        # tensor output to buffer
-        for comp_out, work_out in zip(comp_op.results, outputs):
-            buffer = self.to_buffer(comp_out)
-            memref_d.copy(buffer, work_out, ip=self.get_ip())
+        with self.get_ip():
+            block = allo.GridMap.build(inputs + outputs, shardings, grid)
+        func_d.CallOp(
+            [],
+            FlatSymbolRefAttr.get(callee_name),
+            block.arguments,
+            ip=InsertionPoint.at_block_begin(block),
+        )
 
     def visit_Call(self, node: ast.Call):
         if isinstance(node.func, ast.Attribute) and isinstance(

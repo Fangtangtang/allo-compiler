@@ -143,38 +143,17 @@ class ASTPreProcessor(ast.NodeTransformer):
                             # update to mark it as shared resource
                             var.type_comment = "shared"
                         if var.type_comment == "shared":
-                            # register as meta operation
-                            target = ast.Name(id=name, ctx=ast.Store())
-                            target.dtype, target.shape = var.dtype, var.shape
-                            target.spec = var.spec
-                            op = ast.Assign(
-                                targets=[target],
-                                value=ast.Call(
-                                    func=ast.Attribute(
-                                        value=ast.Name(id="__allo__", ctx=ast.Load()),
-                                        attr="get_mem",
-                                        ctx=ast.Load(),
-                                    ),
-                                    args=[
-                                        ast.Name(
-                                            id=self.symbol_table.mangle_with_namespace(
-                                                name, self.current_namespace
-                                            ),
-                                            ctx=ast.Load(),
-                                        ),
-                                        self.get_ast_annotaiton(
-                                            var.dtype, var.shape, var.spec
-                                        ),
-                                    ],
-                                    keywords=[],
-                                ),
-                            )
-                            ast.copy_location(
-                                op, self.symbol_table.functions[self.current_func]
-                            )
-                            self.meta_ops.append(op)
-                            self.scopes[i + 1].vars[name] = target  # fix scoping
-                            return target
+                            # current shared resource are top module's args
+                            assert isinstance(var, ast.arg)
+                            work_def = self.symbol_table.functions[self.current_func]
+                            assert hasattr(work_def, "shared_kw")  # shared resources
+                            work_def.shared_kw.value.elts.append(
+                                ast.Name(id=name, ctx=ast.Load())
+                            )  # add as new argument
+                            arg = copy.deepcopy(var)
+                            work_def.args.args.append(arg)
+                            self.scopes[i + 1].vars[name] = arg
+                            return arg
                 return var
             if name in scope.consts:
                 return scope.consts[name]
@@ -1445,27 +1424,6 @@ class ASTPreProcessor(ast.NodeTransformer):
                 node.body = self.visit_body(node.body)
                 node.body.append(ast.Return())
                 meta_ops = []
-                for arg in node.args.args:
-                    if arg.type_comment == "shared":  # TODO: should copy output back
-                        call_op = ast.Call(
-                            func=ast.Attribute(
-                                value=ast.Name(id="__allo__", ctx=ast.Load()),
-                                attr="set_mem",
-                                ctx=ast.Load(),
-                            ),
-                            args=[
-                                ast.Name(
-                                    id=self.symbol_table.mangle_with_namespace(
-                                        arg.arg, self.current_namespace
-                                    ),
-                                    ctx=ast.Load(),
-                                ),  # global
-                                ast.Name(id=arg.arg, ctx=ast.Load()),  # local
-                                self.get_ast_annotaiton(arg.dtype, arg.shape, arg.spec),
-                            ],
-                            keywords=[],
-                        )
-                        meta_ops.append(ast.Expr(call_op))
                 node.body = meta_ops + node.body
         else:
             with self.function_scope(node):
@@ -1523,6 +1481,8 @@ class ASTPreProcessor(ast.NodeTransformer):
                 node.decorator_list[0].keywords.append(
                     ast.keyword("outputs", ast.List(outputs))
                 )
+            node.shared_kw = ast.keyword("shared", ast.List([]))
+            node.decorator_list[0].keywords.append(node.shared_kw)
             args = inputs + outputs
             node, _ = self.visit_function_signature(node, instantiate=instantiate)
             assert (

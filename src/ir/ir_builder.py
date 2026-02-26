@@ -571,7 +571,7 @@ class IRBuilder(ast.NodeVisitor):
 
     def visit_work(self, callee: ast.FunctionDef):
         callee_name = callee.name
-        grid, inputs, outputs = None, None, None
+        grid, inputs, outputs, shared = None, None, None, None
         for kw in callee.decorator_list[0].keywords:
             if kw.arg == "mapping":
                 grid = [c.value for c in kw.value.elts]
@@ -579,8 +579,10 @@ class IRBuilder(ast.NodeVisitor):
                 inputs = [(self.get_op_result(self.visit(e))) for e in kw.value.elts]
             elif kw.arg == "outputs":
                 outputs = [self.get_op_result(self.visit(e)) for e in kw.value.elts]
+            elif kw.arg == "shared":
+                shared = [(self.get_op_result(self.visit(e))) for e in kw.value.elts]
         shardings = []
-        for arg in callee.args.args:
+        for arg in callee.args.args[: len(inputs + outputs)]:
             # TODO: attach related attributes?
             dtype, shape, spec, type_hint = self.parse_type_ann(arg.annotation)
             shardings.append(
@@ -591,7 +593,7 @@ class IRBuilder(ast.NodeVisitor):
         func_d.CallOp(
             [],
             FlatSymbolRefAttr.get(callee_name),
-            block.arguments,
+            list(block.arguments) + shared,
             ip=InsertionPoint.at_block_begin(block),
         )
 

@@ -3,6 +3,7 @@
 
 from collections import defaultdict
 from .memory import DTensor
+from allo._mlir.extras.dialects import sdy as sdy
 from allo._mlir.ir import (
     Module,
     Location,
@@ -75,7 +76,6 @@ def parse_spmw_module(module, top_name):
     for func_block in top_module.body:
         for op in func_block.operations:
             if isinstance(op, sdy_d.ManualComputationOp):
-                mesh = None
                 in_shardings = sdy_d.TensorShardingPerValueAttr(
                     op.in_shardings
                 ).shardings
@@ -83,7 +83,6 @@ def parse_spmw_module(module, top_name):
                 assert len(op.tensors) == len(in_shardings)
                 for shard, tensor in zip(in_shardings, op.tensors):
                     shard = sdy_d.TensorShardingAttr(shard)
-                    mesh = shard.mesh_or_ref
                     arg = BlockArgument(tensor.owner.buffer)
                     dims = shard.dimension_shardings
                     tensors.append(
@@ -100,7 +99,6 @@ def parse_spmw_module(module, top_name):
                 assert len(op.results) == len(out_shardings)
                 for shard, tensor in zip(out_shardings, op.results):
                     shard = sdy_d.TensorShardingAttr(shard)
-                    mesh = shard.mesh_or_ref
                     dims = shard.dimension_shardings
                     for use in tensor.uses:
                         for use in use.owner.result.uses:
@@ -114,8 +112,8 @@ def parse_spmw_module(module, top_name):
                             "is_input": False,
                         }
                     )
-                mesh_op = symbol_map[mesh.value]
-                mesh_attr = sdy_d.MeshAttr(mesh_op.mesh)
+                mesh_name = sdy.SPMD.get_mesh(op).value
+                mesh_attr = sdy_d.MeshAttr(symbol_map[mesh_name].mesh)
                 mesh_map = {}
                 for ax in mesh_attr.axes:
                     ax = sdy_d.MeshAxisAttr(ax)
@@ -124,7 +122,7 @@ def parse_spmw_module(module, top_name):
                 for block in op.body:
                     for sub_op in block.operations:
                         if isinstance(sub_op, func_d.CallOp):
-                            work_grids[mesh.value] = {
+                            work_grids[mesh_name] = {
                                 "grid": grid,
                                 "work": sub_op.callee.value,
                             }

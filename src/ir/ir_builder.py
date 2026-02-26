@@ -626,8 +626,8 @@ class IRBuilder(ast.NodeVisitor):
             mesh.sym_name.value, callee.args.args[len(inputs) :], False
         )
         with self.get_ip():
-            comp_op = sdy.manual_computation(
-                results, inputs, in_shard, out_shard, len(grid)
+            comp_op = sdy.SPMD.manual_computation(
+                results, inputs, in_shard, out_shard, len(grid), mesh.sym_name.value
             )
         block = comp_op.body.blocks.append(*local_types)
         self.set_ip(block)

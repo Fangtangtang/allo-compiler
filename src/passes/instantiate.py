@@ -18,11 +18,13 @@ from allo._mlir.ir import (
     StringAttr,
     FlatSymbolRefAttr,
     UnitAttr,
+    BlockArgument,
 )
 from allo._mlir.dialects import (
     allo as allo_d,
     arith as arith_d,
     func as func_d,
+    memref as memref_d,
     sdy as sdy_d,
 )
 
@@ -45,7 +47,7 @@ def instantiate_for_hls(module, top_name):
         copies = Module.create()
         with InsertionPoint(copies.body):
             for op in mod.body.operations:
-                if isinstance(op, allo_d.StreamGlobalOp):
+                if is_resource(op):
                     op.clone()
             for grid_info in work_grids.values():
                 grid_shape = grid_info["grid"]
@@ -89,6 +91,15 @@ def instantiate_for_hls(module, top_name):
         attr.copy_attr(top_module, top_func, {"itypes", "otypes"}, allow_missing=False)
         entry_ip = InsertionPoint.at_block_begin(entry_block)
         top_func.attributes["dataflow"] = UnitAttr.get()
+        arg_map = {}
+        for op in top_module.entry_block:
+            if isinstance(op, memref_d.GetGlobalOp):
+                for use in op.result.uses:
+                    assert isinstance(use.owner, memref_d.CopyOp)
+                    arg_map[op.name.value] = (
+                        BlockArgument(use.owner.operands[0])
+                    ).arg_number
+
         # move resource to local
         with entry_ip:
             for name, op in resources.items():
@@ -102,7 +113,11 @@ def instantiate_for_hls(module, top_name):
                         ]
                     for n in names:
                         stream = allo_d.StreamConstructOp(op.element_type.value)
-                        new_resources[n] = stream
+                        new_resources[n] = stream.value
+                elif isinstance(op, memref_d.GlobalOp):
+                    new_resources[op.sym_name.value] = top_func.arguments[
+                        arg_map[op.sym_name.value]
+                    ]
                 else:
                     raise NotImplementedError
 
@@ -130,7 +145,7 @@ def instantiate_for_hls(module, top_name):
                 for symbol in symbol_names:
                     resource_op = new_resources[symbol]
                     args.append(resource_op)
-                    itypes.append(resource_op.result.type)
+                    itypes.append(resource_op.type)
                     itype_hints += "_"  # FIXME
                 new_func = func.function(
                     hls_function_name,
@@ -167,7 +182,13 @@ def instantiate_for_hls(module, top_name):
                                 ip=InsertionPoint(op),
                             )
                             op.erase()
+                        elif isinstance(op, memref_d.GetGlobalOp):
+                            op.result.replace_all_uses_with(
+                                new_func.arguments[i + base_inputs]
+                            )
+                            op.erase()
                         else:
+                            print(op)
                             raise NotImplementedError
                 # call the function in top module
                 func_d.CallOp(
@@ -179,6 +200,11 @@ def instantiate_for_hls(module, top_name):
         func_d.ReturnOp([], ip=entry_ip)
 
     for op in mod.body.operations:
-        if isinstance(op, allo_d.StreamGlobalOp) or isinstance(op, sdy_d.MeshOp):
+        if isinstance(op, allo_d.StreamGlobalOp):
             op.erase()
+        elif isinstance(op, sdy_d.MeshOp):
+            op.erase()
+        elif isinstance(op, memref_d.GlobalOp):
+            op.erase()
+
     return mod

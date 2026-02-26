@@ -132,47 +132,49 @@ class ASTPreProcessor(ast.NodeTransformer):
             - allow_missing (bool): If True, return None when the symbol
                 does not exist. Otherwise, raise an error.
         """
-        for scope in reversed(self.scopes):
+        for i in reversed(range(len(self.scopes))):
+            scope = self.scopes[i]
             if name in scope.vars:
                 var = scope.vars[name]
                 if self.current_namespace is not None and hasattr(var, "type_comment"):
                     # self.current_func -> not directly under UNIT (namespace)
-                    if self.current_func is not None and var.type_comment == "dtensor":
-                        var.type_comment = (
-                            "shared"  # update to mark it as shared resource
-                        )
-                        # register as meta operation
-                        target = ast.Name(id=name, ctx=ast.Store())
-                        target.dtype, target.shape = var.dtype, var.shape
-                        target.spec = var.spec
-                        op = ast.Assign(
-                            targets=[target],
-                            value=ast.Call(
-                                func=ast.Attribute(
-                                    value=ast.Name(id="__allo__", ctx=ast.Load()),
-                                    attr="get_mem",
-                                    ctx=ast.Load(),
-                                ),
-                                args=[
-                                    ast.Name(
-                                        id=self.symbol_table.mangle_with_namespace(
-                                            name, self.current_namespace
-                                        ),
+                    if self.current_func is not None:
+                        if var.type_comment == "dtensor":
+                            # update to mark it as shared resource
+                            var.type_comment = "shared"
+                        if var.type_comment == "shared":
+                            # register as meta operation
+                            target = ast.Name(id=name, ctx=ast.Store())
+                            target.dtype, target.shape = var.dtype, var.shape
+                            target.spec = var.spec
+                            op = ast.Assign(
+                                targets=[target],
+                                value=ast.Call(
+                                    func=ast.Attribute(
+                                        value=ast.Name(id="__allo__", ctx=ast.Load()),
+                                        attr="get_mem",
                                         ctx=ast.Load(),
                                     ),
-                                    self.get_ast_annotaiton(
-                                        var.dtype, var.shape, var.spec
-                                    ),
-                                ],
-                                keywords=[],
-                            ),
-                        )
-                        ast.copy_location(
-                            op, self.symbol_table.functions[self.current_func]
-                        )
-                        self.meta_ops.append(op)
-                        scope.vars[name] = target
-                        return target
+                                    args=[
+                                        ast.Name(
+                                            id=self.symbol_table.mangle_with_namespace(
+                                                name, self.current_namespace
+                                            ),
+                                            ctx=ast.Load(),
+                                        ),
+                                        self.get_ast_annotaiton(
+                                            var.dtype, var.shape, var.spec
+                                        ),
+                                    ],
+                                    keywords=[],
+                                ),
+                            )
+                            ast.copy_location(
+                                op, self.symbol_table.functions[self.current_func]
+                            )
+                            self.meta_ops.append(op)
+                            self.scopes[i + 1].vars[name] = target  # fix scoping
+                            return target
                 return var
             if name in scope.consts:
                 return scope.consts[name]

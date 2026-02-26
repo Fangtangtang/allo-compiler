@@ -113,7 +113,7 @@ def instantiate_for_hls(module, top_name):
                         ]
                     for n in names:
                         stream = allo_d.StreamConstructOp(op.element_type.value)
-                        new_resources[n] = stream.value
+                        new_resources[n] = stream.result
                 elif isinstance(op, memref_d.GlobalOp):
                     new_resources[op.sym_name.value] = top_func.arguments[
                         arg_map[op.sym_name.value]

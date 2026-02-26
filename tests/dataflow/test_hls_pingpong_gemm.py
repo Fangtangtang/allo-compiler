@@ -6,6 +6,7 @@ from allo import spmw
 import tempfile
 import numpy as np
 from src.hls import to_hls
+import allo.backend.hls as hls
 
 
 def test_cooperative_gemm():
@@ -18,39 +19,40 @@ def test_cooperative_gemm():
     def top(A: Ty[M, K], B: Ty[K, N], C: Ty[M, N]):
         pipe: Stream[Ty[Mt, Nt], 2][P0, P1]
 
-        @spmw.work(mapping=[P0, P1], inputs=[A, B])
-        def gemm0(local_A: Ty[M, K], local_B: Ty[K, N]):
+        @spmw.work(mapping=[P0, P1])
+        def gemm0():
             pi, pj = spmw.get_wid()
             C_out: Ty[Mt, Nt] = 0
             for i in range(pi * Mt, (pi + 1) * Mt):
                 for j in range(pj * Nt, (pj + 1) * Nt):
                     c: Ty = 0
                     for k in range(K // 2):
-                        c += local_A[i, k] * local_B[k, j]
+                        c += A[i, k] * B[k, j]
                     C_out[i - pi * Mt, j - pj * Nt] = c
             pipe[pi, pj].put(C_out)
 
-        @spmw.work(mapping=[P0, P1], inputs=[A, B], outputs=[C])
-        def gemm1(local_A: Ty[M, K], local_B: Ty[K, N], local_C: Ty[M, N]):
+        @spmw.work(mapping=[P0, P1])
+        def gemm1():
             pi, pj = spmw.get_wid()
             C_out: Ty[Mt, Nt] = pipe[pi, pj].get()
             for i in range(pi * Mt, (pi + 1) * Mt):
                 for j in range(pj * Nt, (pj + 1) * Nt):
                     c: Ty = 0
                     for k in range(K // 2, K):
-                        c += local_A[i, k] * local_B[k, j]
-                    local_C[i, j] = C_out[i - pi * Mt, j - pj * Nt] + c
+                        c += A[i, k] * B[k, j]
+                    C[i, j] = C_out[i - pi * Mt, j - pj * Nt] + c
 
     A = np.random.rand(M, K).astype(np.float32)
     B = np.random.rand(K, N).astype(np.float32)
     C = np.zeros((M, N), dtype=np.float32)
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        mod = to_hls(top, project=tmpdir)
-        C = np.zeros((M, N), dtype=np.float32)
-        mod(A, B, C)
-        np.testing.assert_allclose(C, np.dot(A, B), atol=1e-5)
-        print("Passed!")
+    if hls.is_available("vitis_hls"):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mod = to_hls(top, project=tmpdir)
+            C = np.zeros((M, N), dtype=np.float32)
+            mod(A, B, C)
+            np.testing.assert_allclose(C, np.dot(A, B), atol=1e-5)
+            print("Passed!")
 
 
 if __name__ == "__main__":

@@ -249,10 +249,9 @@ class IRBuilder(ast.NodeVisitor):
         expr = self.get_affine_expr(node, ivs, symbols)
         if expr is None:
             return None, None
-        assert len(symbols) == 0, "To be implemented."
         return (
             AffineMap.get(dim_count=len(ivs), symbol_count=len(symbols), exprs=[expr]),
-            ivs,
+            ivs + symbols,
         )
 
     def visit_Subscript(self, node: ast.Subscript, val=None):

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from src.main import process_spmw
-from src.passes.utils import parse_spmw_module
+from src.hls import to_hls
 from allo.ir.types import int32, float32, Stream, ConstExpr, index
 from allo import spmw
 from allo.memory import Layout
@@ -18,8 +18,7 @@ def test_shard_1D():
         def core(local_A: int32[1024] @ [S(0)], local_B: int32[1024] @ [S(0)]):
             local_B[:] = local_A + 1
 
-    module, top_name = process_spmw(top)
-    s = parse_spmw_module(module, top_name)
+    s = process_spmw(top)
 
 
 def test_shard_2D():
@@ -53,8 +52,7 @@ def test_get_wid_1D_1():
             for i in range(1024):
                 B[i] = A[i] + 1
 
-    module, top_name = process_spmw(top)
-    s = parse_spmw_module(module, top_name)
+    mod = to_hls(top)
 
 
 def test_get_wid_1D_2():
@@ -70,8 +68,7 @@ def test_get_wid_1D_2():
             for i in range(tlen * pi, tlen * (pi + 1)):
                 B[i] = A[i] + 1
 
-    module, top_name = process_spmw(top)
-    s = parse_spmw_module(module, top_name)
+    mod = to_hls(top)
 
 
 def test_cooperative_gemm():
@@ -111,7 +108,7 @@ def test_cooperative_gemm():
 
 
 if __name__ == "__main__":
-    test_shard_1D()
+    # test_shard_1D()
     # test_shard_2D()
     test_get_wid_1D_1()
     # test_get_wid_1D_2()

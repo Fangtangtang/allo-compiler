@@ -25,7 +25,6 @@ from allo._mlir.dialects import (
     arith as arith_d,
     func as func_d,
     memref as memref_d,
-    sdy as sdy_d,
 )
 
 
@@ -112,18 +111,12 @@ def instantiate_for_hls(module, top_name):
                     for n in names:
                         stream = allo_d.StreamConstructOp(op.element_type.value)
                         new_resources[n] = stream.result
-                elif isinstance(op, memref_d.GlobalOp):
-                    new_resources[op.sym_name.value] = top_func.arguments[
-                        arg_map[op.sym_name.value]
-                    ]
                 else:
                     raise NotImplementedError
 
     with InsertionPoint.at_block_begin(mod.body), Location.unknown():
         # call ops
-        for grid_info in work_grids.values():
-            grid_shape = grid_info["grid"]
-            orig_func_name = grid_info["work"]
+        for orig_func_name, grid_shape in work_grids.items():
             tensors = dtensors[orig_func_name]  # argument passing
             for dim in np.ndindex(*grid_shape):
                 function_name = construct_name(orig_func_name, dim)
@@ -180,11 +173,6 @@ def instantiate_for_hls(module, top_name):
                                 ip=InsertionPoint(op),
                             )
                             op.erase()
-                        elif isinstance(op, memref_d.GetGlobalOp):
-                            op.result.replace_all_uses_with(
-                                new_func.arguments[i + base_inputs]
-                            )
-                            op.erase()
                         else:
                             print(op)
                             raise NotImplementedError
@@ -199,10 +187,6 @@ def instantiate_for_hls(module, top_name):
 
     for op in mod.body.operations:
         if isinstance(op, allo_d.StreamGlobalOp):
-            op.erase()
-        elif isinstance(op, sdy_d.MeshOp):
-            op.erase()
-        elif isinstance(op, memref_d.GlobalOp):
             op.erase()
 
     return mod

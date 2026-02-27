@@ -8,7 +8,6 @@ from allo._mlir.extras.dialects.affine import AffExpr
 
 from allo._mlir.extras.dialects import allo as allo, func as func
 from allo._mlir.dialects import (
-    bufferization as buf_d,
     func as func_d,
     memref as memref_d,
     affine as affine_d,
@@ -181,16 +180,6 @@ class IRBuilder(ast.NodeVisitor):
         buffer = memref_d.AllocOp(memref_type, [], [], ip=self.get_ip())
         buffer.attributes[type_hint] = UnitAttr.get()
         return buffer
-
-    def to_tensor(self, buffer):
-        result = mlir_types.tensor(
-            *buffer.type.shape, element_type=buffer.type.element_type
-        )
-        return buf_d.to_tensor(result, buffer, ip=self.get_ip())
-
-    def to_buffer(self, tensor):
-        result = MemRefType.get(tensor.type.shape, tensor.type.element_type)
-        return buf_d.to_buffer(result, tensor, ip=self.get_ip())
 
     def visit_Name(self, node: ast.Name):
         if isinstance(node.ctx, ast.Load):

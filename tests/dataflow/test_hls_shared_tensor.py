@@ -2,8 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import numpy as np
-from src.main import process_spmw
-
+import tempfile
+from src.hls import to_hls
+import allo.backend.hls as hls
+from allo.ir.types import int32, ConstExpr, index
 from allo import spmw
 from allo.memory import Layout
 

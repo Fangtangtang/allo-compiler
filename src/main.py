@@ -51,6 +51,7 @@ def process_spmw(fn: Union[Callable, str], instantiate: list = None):
     """
     module, top_name = build(fn, instantiate)
     print(module)
+    return module, top_name
 
 
 def to_hls(fn: Union[Callable, str], instantiate: list = None, project=None):

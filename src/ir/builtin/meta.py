@@ -29,15 +29,3 @@ class WidHandler(BuiltinHandler):
         for i, target in enumerate(targets):
             assert isinstance(target, ast.Name)
             self.builder.reserved_bindings[target.id] = op.results[i]
-
-
-@register_builtin_handler("get_mem")
-class MemoryGetHandler(BuiltinHandler):
-    def build(self, node, *args):
-        targets = args[0]
-        assert len(targets) == 1
-        symbol_name = node.args[0].id
-        dtype, hint = self.builder.build_type(node.args[1], True)
-        op = memref_d.GetGlobalOp(dtype, symbol_name, ip=self.builder.get_ip())
-        op.attributes[hint] = UnitAttr.get()
-        self.builder.reserved_bindings[targets[0].id] = op.result

@@ -42,7 +42,7 @@ def parse(fn: Union[Callable, str], instantiate: list = None):
 
     context = Context()
     with context as ctx:
-        register_dialect(ctx, True)
+        register_dialect(ctx)
         new_module = Module.parse(module_content)
 
     parsed = parse_spmw_module(new_module, top_name)
@@ -55,9 +55,7 @@ def parse(fn: Union[Callable, str], instantiate: list = None):
     func_instances = defaultdict(dict)
     core_func_args = defaultdict(dict)
     with InsertionPoint(mod.body), Location.unknown():
-        for mesh_name, grid_info in work_grids.items():
-            grid_shape = grid_info["grid"]
-            orig_func_name = grid_info["work"]
+        for orig_func_name, grid_shape in work_grids.items():
             orig_func = symbol_map[orig_func_name]
             for dim in np.ndindex(*grid_shape):
                 func = orig_func.clone()

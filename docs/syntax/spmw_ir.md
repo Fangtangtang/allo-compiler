@@ -9,10 +9,6 @@
 
 * `allo`: Out-of-tree custom operations specific to this framework.
 
-* 🔀`sdy`: Tensor layout representation and unit's structure construction.
-* 🔀`tensor`: `sdy` operates on `tensor` types. However, this framework primarily uses `memref` for intermediate representation and interoperability.
-* 🔀`bufferization`: This enables bridging between `sdy` (tensor-based semantics) and the predominantly `memref`-based lowering pipeline.
-
 ## Module Structure
 
 The entire program is represented as a single MLIR module.

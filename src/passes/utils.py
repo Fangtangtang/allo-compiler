@@ -11,7 +11,9 @@ from allo._mlir.ir import (
     Operation,
     FlatSymbolRefAttr,
 )
+from allo._mlir.extras.dialects import allo as allo
 from allo._mlir.dialects import (
+    allo as allo_d,
     func as func_d,
     memref as memref_d,
 )
@@ -57,83 +59,46 @@ def parse_spmw_module(module, top_name):
     top_module = symbol_map[top_name]
     work_grids = {}
     dtensors = defaultdict(list)
-
-    def get_shard(dims):
-        shard = []
-        for x in dims:
-            axes = sdy_d.DimensionShardingAttr(x).axes
-            if len(axes) == 0:
-                shard.append(Layout.Replicate)
-            else:
-                assert len(axes) == 1
-                shard.append(Layout.Shard(int(sdy_d.AxisRefAttr(axes[0]).name)))
-        return shard
-
     for func_block in top_module.body:
         for op in func_block.operations:
-            if isinstance(op, sdy_d.ManualComputationOp):
-                in_shardings = sdy_d.TensorShardingPerValueAttr(
-                    op.in_shardings
-                ).shardings
-                tensors = []
-                assert len(op.tensors) == len(in_shardings)
-                for shard, tensor in zip(in_shardings, op.tensors):
-                    shard = sdy_d.TensorShardingAttr(shard)
-                    arg = BlockArgument(tensor.owner.buffer)
-                    dims = shard.dimension_shardings
-                    tensors.append(
-                        {
-                            "id": arg.arg_number,
-                            "type": arg.type,
-                            "shard": get_shard(dims),
-                            "is_input": True,
-                        }
-                    )
-                out_shardings = sdy_d.TensorShardingPerValueAttr(
-                    op.out_shardings
-                ).shardings
-                assert len(op.results) == len(out_shardings)
-                for shard, tensor in zip(out_shardings, op.results):
-                    shard = sdy_d.TensorShardingAttr(shard)
-                    dims = shard.dimension_shardings
-                    for use in tensor.uses:
-                        for use in use.owner.result.uses:
-                            assert isinstance(use.owner, memref_d.CopyOp)
-                            arg = BlockArgument(use.owner.operands[1])
-                    tensors.append(
-                        {
-                            "id": arg.arg_number,
-                            "type": arg.type,
-                            "shard": get_shard(dims),
-                            "is_input": False,
-                        }
-                    )
-                mesh_name = sdy.SPMD.get_mesh(op).value
-                mesh_attr = sdy_d.MeshAttr(symbol_map[mesh_name].mesh)
-                mesh_map = {}
-                for ax in mesh_attr.axes:
-                    ax = sdy_d.MeshAxisAttr(ax)
-                    mesh_map[ax.name] = ax.size
-                grid = [mesh_map[str(i)] for i in range(len(mesh_map))]
+            if isinstance(op, allo_d.GridMapOp):
+                grid = list(op.grid)
+                is_input = allo.GridMap.get_interface(op)
                 for block in op.body:
                     for sub_op in block.operations:
                         if isinstance(sub_op, func_d.CallOp):
-                            work_grids[mesh_name] = {
-                                "grid": grid,
-                                "work": sub_op.callee.value,
-                            }
+                            work_grids[sub_op.callee.value] = grid
                             break
-                for tensor, operand in zip(tensors, sub_op.operands_):
+                for i, (buf, shard) in enumerate(zip(op.tensors, op.sharding)):
+                    sharding = [
+                        Layout.Shard(s.value) if s.value >= 0 else Layout.Replicate
+                        for s in shard
+                    ]
+                    arg = BlockArgument(buf)
                     dtensor = DTensor(
                         mapping=grid,
-                        shape=tuple(tensor["type"].shape),
-                        dtype=tensor["type"].element_type,
-                        spec_list=[Layout(tensor["shard"])],
-                        tile_shape=tuple(operand.type.shape),
-                        is_input=tensor["is_input"],
-                        id_=tensor["id"],
+                        shape=tuple(arg.type.shape),
+                        dtype=arg.type.element_type,
+                        spec_list=[Layout(sharding)],
+                        tile_shape=tuple(sub_op.operands_[i].type.shape),
+                        is_input=is_input[i],
+                        id_=arg.arg_number,
                     )
                     dtensors[sub_op.callee.value].append(dtensor)
+                for i in range(len(op.tensors), len(sub_op.operands_)):
+                    arg = BlockArgument(sub_op.operands_[i])
+                    shape = tuple(arg.type.shape)
+                    dtensor = DTensor(
+                        mapping=grid,
+                        shape=shape,
+                        dtype=arg.type.element_type,
+                        spec_list=[Layout([Layout.Replicate] * len(shape))],
+                        tile_shape=shape,
+                        is_input=None,
+                        id_=arg.arg_number,
+                    )
+                    dtensors[sub_op.callee.value].append(dtensor)
+
     return {
         "grids": work_grids,
         "symbols": symbol_map,
@@ -145,7 +110,5 @@ def parse_spmw_module(module, top_name):
 
 def is_resource(op):
     if isinstance(op, func_d.FuncOp):
-        return False
-    if isinstance(op, sdy_d.MeshOp):
         return False
     return True

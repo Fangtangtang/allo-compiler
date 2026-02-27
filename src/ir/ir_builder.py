@@ -589,7 +589,7 @@ class IRBuilder(ast.NodeVisitor):
                 [p.axis if isinstance(p, Layout.Shard) else -1 for p in spec.partitions]
             )
         with self.get_ip():
-            block = allo.GridMap.build(inputs + outputs, shardings, grid)
+            block = allo.GridMap.build(inputs, outputs, shardings, grid)
         func_d.CallOp(
             [],
             FlatSymbolRefAttr.get(callee_name),

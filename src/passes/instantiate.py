@@ -49,9 +49,7 @@ def instantiate_for_hls(module, top_name):
             for op in mod.body.operations:
                 if is_resource(op):
                     op.clone()
-            for grid_info in work_grids.values():
-                grid_shape = grid_info["grid"]
-                orig_func_name = grid_info["work"]
+            for orig_func_name, grid_shape in work_grids.items():
                 orig_func = symbol_map[orig_func_name]
                 for dim in np.ndindex(*grid_shape):
                     func_ = orig_func.clone()

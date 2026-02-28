@@ -2,9 +2,20 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from contextlib import contextmanager
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class Interface:
+    meta: str  # meta programming interface, e.g. the file defineing `meta_for`
+    spmw: str  # spmw related interface
+    lib: str  # allo's kernel library
 
 
 _TYPING_RULE_CONFIG = "default"  # Global configuration for typing rules
+_INTERFACE_PATH_CONFIG = Interface(
+    meta="allo.template", spmw="allo.spmw", lib="allo.dsl"
+)
 
 
 def get_typing_rule_config():

@@ -11,6 +11,7 @@ import numpy as np
 import sympy
 from .utils import get_ast, SymbolTable, Scope, ErrorValue
 from .typing_rule import cpp_style_registry
+from .config import _INTERFACE_PATH_CONFIG
 from allo.spmw import FunctionType
 from allo.ir.types import (
     AlloType,
@@ -1049,7 +1050,9 @@ class ASTPreProcessor(ast.NodeTransformer):
                 return node
             # builtin for loops
             module = self.resolve_node(node.iter.func)
-            assert module.__module__.startswith("allo.dsl"), "Invalid for statement"
+            assert module.__module__.startswith(
+                _INTERFACE_PATH_CONFIG.lib
+            ), "Invalid for statement"
             attr = module.__name__
             assert attr == "grid" or attr == "reduction", "Unsupported loop type"
             targets = (
@@ -1139,7 +1142,9 @@ class ASTPreProcessor(ast.NodeTransformer):
         assert len(node.items) == 1 and isinstance(node.items[0].context_expr, ast.Call)
         func = node.items[0].context_expr.func
         module = self.resolve_node(func)
-        assert module.__module__.startswith("allo.template"), "Invalide with statement"
+        assert module.__module__.startswith(
+            _INTERFACE_PATH_CONFIG.meta
+        ), "Invalide with statement"
         attr = module.__name__
         # compile time unrolled loop
         if attr == "meta_for":
@@ -1329,7 +1334,7 @@ class ASTPreProcessor(ast.NodeTransformer):
             return self.visit_call_kernel(node, func, instantiate)
         if isinstance(node.func, ast.Attribute):
             module = self.resolve_node(node.func)
-            if module and module.__module__.startswith("allo.spmw"):
+            if module and module.__module__.startswith(_INTERFACE_PATH_CONFIG.spmw):
                 attr = module.__name__
                 assert attr in self.work_meta, f"{attr} must be in work."
                 values = self.work_meta[attr]
@@ -1442,7 +1447,10 @@ class ASTPreProcessor(ast.NodeTransformer):
             node.decorator_list[0], ast.Call
         )
         module = self.resolve_node(node.decorator_list[0].func)
-        assert module.__module__.startswith("allo.spmw") and module.__name__ == "work"
+        assert (
+            module.__module__.startswith(_INTERFACE_PATH_CONFIG.spmw)
+            and module.__name__ == "work"
+        )
         node._type = FunctionType.WORK
         with self.block_scope():  # to support args shadowing
             # keywords

@@ -287,7 +287,7 @@ def instantiate_for_hierarchical_hls(module, top_name):
                     symbols, kernels = collect_symbol_refs_in_function(instance)
                     for k in kernels:
                         if k in counter:
-                            counter[k] += 1
+                            counter[k] += len(kernels[k])
                     symbol_names = sorted(symbols.keys())
                     itypes = instance.type.inputs
                     base_inputs = len(itypes)
@@ -359,4 +359,53 @@ def instantiate_for_hierarchical_hls(module, top_name):
     if all(v <= 1 for v in counter.values()):
         return mod
 
-    raise NotImplementedError()
+    return instantiate_callee(mod, units, top_name)
+
+
+def instantiate_callee(orig_module, units, top_name):
+    # [NOTE]: not well tested
+    unit_cnt = 0
+    with orig_module.context, Location.unknown():
+        module = Module.create()
+        with InsertionPoint(module.body):
+
+            def instantivate_unit(name):
+                nonlocal unit_cnt
+                suffix = f"_{unit_cnt}"
+                unit_cnt += 1
+                # instantiate recursively
+                unit: Unit = units[name]
+                new_unit = unit.top.clone()
+                new_unit.sym_name = StringAttr.get(new_unit.name.value + suffix)
+                for block in new_unit.body:
+                    for op in block:
+                        if isinstance(op, func_d.CallOp):
+                            assert op.callee.value in unit.works
+                            work = unit.works[op.callee.value].clone()
+                            work.sym_name = StringAttr.get(work.name.value + suffix)
+                            op.callee = FlatSymbolRefAttr.get(work.sym_name.value)
+                            for block in work.body:
+                                replace(block.operations)
+
+                return new_unit
+
+            def replace(operations):
+                for op in operations:
+                    if isinstance(op, func_d.CallOp) and op.callee.value in units:
+                        callee = instantivate_unit(op.callee.value)
+                        op.callee = FlatSymbolRefAttr.get(callee.sym_name.value)
+
+                    for region in op.regions:
+                        for block in region.blocks:
+                            replace(block.operations)
+
+            top_unit: Unit = units[top_name]
+            for work in top_unit.works.values():
+                new_work = work.clone()
+                for block in new_work.body:
+                    replace(block.operations)
+
+            top_unit.top.clone()
+    print(module)
+
+    return module

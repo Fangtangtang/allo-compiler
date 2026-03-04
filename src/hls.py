@@ -6,7 +6,7 @@ from collections.abc import Callable
 from .ir.utils import SymbolTable, get_global_vars
 from .ir.ast_preprocessor import ASTPreProcessor
 from .ir.ir_builder import IRBuilder
-from .passes.instantiate import instantiate_for_hls
+from .passes.instantiate import instantiate_for_hls, instantiate_for_hierarchical_hls
 from allo.backend.hls import HLSModule
 
 
@@ -17,7 +17,7 @@ def to_hls(fn: Union[Callable, str], instantiate: list = None, project=None):
     node, top_name = ast_processor.process(fn, instantiate=instantiate)
     builder = IRBuilder(symbol_table)
     module = builder.build()
-    parsed = instantiate_for_hls(module, top_name)
+    parsed = instantiate_for_hierarchical_hls(module, top_name)
     mod = HLSModule(
         parsed,
         top_func_name=top_name,

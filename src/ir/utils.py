@@ -64,6 +64,10 @@ class SymbolTable:
         return f"{work_name}.mesh"
 
     @staticmethod
+    def get_namespace(name) -> str:
+        return name.partition(".")[0]
+
+    @staticmethod
     def get_hash(arr):
         assert isinstance(arr, np.ndarray), "only support np.ndarray"
         return hashlib.sha256(

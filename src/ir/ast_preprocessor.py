@@ -148,6 +148,9 @@ class ASTPreProcessor(ast.NodeTransformer):
                             assert isinstance(var, ast.arg)
                             work_def = self.symbol_table.functions[self.current_func]
                             assert hasattr(work_def, "shared_kw")  # shared resources
+                            for idx, v in enumerate(work_def.shared_kw.value.elts):
+                                if v.id == name:
+                                    return work_def.args.args[idx]
                             work_def.shared_kw.value.elts.append(
                                 ast.Name(id=name, ctx=ast.Load())
                             )  # add as new argument

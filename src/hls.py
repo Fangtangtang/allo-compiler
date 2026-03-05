@@ -10,7 +10,9 @@ from .passes.instantiate import instantiate_for_hls
 from allo.backend.hls import HLSModule
 
 
-def to_hls(fn: Union[Callable, str], instantiate: list = None, project=None):
+def to_hls(
+    fn: Union[Callable, str], instantiate: list = None, project=None, mode="sw_emu"
+):
     symbol_table = SymbolTable()
     ast_processor = ASTPreProcessor(symbol_table, global_symbols=get_global_vars(fn))
     # process the top function
@@ -22,7 +24,7 @@ def to_hls(fn: Union[Callable, str], instantiate: list = None, project=None):
         parsed,
         top_func_name=top_name,
         platform="vitis_hls",
-        mode="sw_emu",
+        mode=mode,
         project=project if project else "top.prj",
         ext_libs=[],
         func_args={},

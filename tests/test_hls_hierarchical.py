@@ -28,13 +28,13 @@ def test1():
     if hls.is_available("vitis_hls"):
         with tempfile.TemporaryDirectory() as tmpdir:
             A = np.random.randint(0, 100, (1024,), dtype=np.int32)
-            B = np.random.randint(0, 100, (1024,), dtype=np.int32)
+            B = np.zeros((1024,), dtype=np.int32)
             C = np.zeros((1024,), dtype=np.int32)
-            mod = to_hls(top)
+            mod = to_hls(top, project=tmpdir)
             mod(A, A, B, C)
             # assert fail due to backend issues
-            # np.testing.assert_allclose(A + 1, B)
-            # np.testing.assert_allclose(A + 1, C)
+            np.testing.assert_allclose(A + 1, C)
+            np.testing.assert_allclose(A + 1, B)
 
 
 def test_hierachical_function():
@@ -64,17 +64,18 @@ def test_hierachical_function():
                 inner(A, B, C2)
 
     if hls.is_available("vitis_hls"):
-        A = np.random.rand(M, K).astype(np.float32)
-        B = np.random.rand(K, N).astype(np.float32)
-        C1 = np.zeros((M, N), dtype=np.float32)
-        C2 = np.zeros((M, N), dtype=np.float32)
-        mod = to_hls(top)
-        mod(A, B, C1, C2)
-        np.testing.assert_allclose(C1, np.dot(A, B), rtol=1e-5, atol=1e-5)
-        np.testing.assert_allclose(C2, np.dot(A, B), rtol=1e-5, atol=1e-5)
-        print("Success!")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            A = np.random.rand(M, K).astype(np.float32)
+            B = np.random.rand(K, N).astype(np.float32)
+            C1 = np.zeros((M, N), dtype=np.float32)
+            C2 = np.zeros((M, N), dtype=np.float32)
+            mod = to_hls(top, project=tmpdir)
+            mod(A, B, C1, C2)
+            np.testing.assert_allclose(C1, np.dot(A, B), rtol=1e-5, atol=1e-5)
+            np.testing.assert_allclose(C2, np.dot(A, B), rtol=1e-5, atol=1e-5)
+            print("Success!")
 
 
 if __name__ == "__main__":
-    # test1()
+    test1()
     test_hierachical_function()

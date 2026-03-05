@@ -9,7 +9,7 @@ from contextlib import contextmanager
 from collections.abc import Callable
 import numpy as np
 import sympy
-from .utils import get_ast, SymbolTable, Scope, ErrorValue
+from .utils import get_ast, report_error, SymbolTable, Scope, ErrorValue
 from .typing_rule import cpp_style_registry
 from .config import _INTERFACE_PATH_CONFIG
 from allo.spmw import FunctionType
@@ -111,7 +111,15 @@ class ASTPreProcessor(ast.NodeTransformer):
         method = "visit_" + node.__class__.__name__
         visitor = getattr(self, method, None)
         assert visitor is not None, f"{method} not found"
-        result = visitor(node)
+        try:
+            result = visitor(node)
+        except Exception as e:
+            if not getattr(e, "_reported", False):
+                name = self.current_func or self.current_namespace
+                source_file = self.symbol_table.functions[name]._source
+                report_error(e, node, source_file=source_file)
+                e._reported = True
+            raise
         # propagate source location
         if isinstance(result, list):
             for r in result:
@@ -1467,6 +1475,7 @@ class ASTPreProcessor(ast.NodeTransformer):
             and module.__name__ == "work"
         )
         node._type = FunctionType.WORK
+        node._source = self.symbol_table.functions[self.current_namespace]._source
         with self.block_scope():  # to support args shadowing
             # keywords
             inputs, outputs, grid = None, None, []

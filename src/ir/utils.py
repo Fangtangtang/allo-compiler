@@ -6,16 +6,86 @@ import copy
 import hashlib
 import inspect
 import numpy as np
+from pathlib import Path
 from collections.abc import Callable
 from types import FunctionType as PyFunctionType
+from rich.console import Console
+from rich.text import Text
+from rich.panel import Panel
 from allo.ir.types import AlloType
 from allo.memory import Memory
+
+
+def report_error(
+    error: Exception,
+    node: ast.AST,
+    source_file: str = None,
+    context: int = 5,
+) -> None:
+    """
+    Report an error with source location from AST node.
+
+    Uses lineno/col_offset from the AST node to display a rich-formatted
+    error message pointing at the offending source line.
+
+    Args:
+        error: The exception or error to report.
+        node: The AST node associated with the error (must have lineno).
+        source_file: Path to source code.
+        context: Number of context lines to show above/below the error line.
+    """
+    lineno = getattr(node, "lineno", None)
+    col_offset = getattr(node, "col_offset", None)
+    end_lineno = getattr(node, "end_lineno", lineno)
+    end_col_offset = getattr(node, "end_col_offset", None)
+    source_lines = Path(source_file).read_text().splitlines()
+
+    console = Console(stderr=True)
+
+    # Build the source display
+    if source_lines and 1 <= lineno <= len(source_lines):
+        start = max(0, lineno - 1 - context)
+        end = min(len(source_lines), end_lineno + context)
+        snippet_lines = []
+        for i in range(start, end):
+            line_num = i + 1
+            line_text = source_lines[i].replace("[", r"\[")
+            if line_num == lineno:
+                snippet_lines.append(
+                    f"[bold red]{line_num:5d} | {line_text}[/bold red]"
+                )
+                # column marker
+                if col_offset is not None:
+                    marker_end = (
+                        end_col_offset
+                        if (end_col_offset and end_lineno == lineno)
+                        else col_offset + 1
+                    )
+                    padding = " " * (8 + col_offset)
+                    underline = "^" * max(1, marker_end - col_offset)
+                    snippet_lines.append(f"[bold red]{padding}{underline}[/bold red]")
+            else:
+                snippet_lines.append(f"{line_num:5d} | {line_text}")
+
+        error_text = Text.from_markup(f"[bold red]Error:[/bold red] {error}")
+        panel = Panel(
+            "\n".join(snippet_lines),
+            title=f"[bold yellow]Line {lineno}[/bold yellow]",
+            subtitle="Source Code",
+            border_style="red",
+        )
+        console.print(error_text)
+        console.print(panel)
+    else:
+        loc = f" (line {lineno})" if lineno else ""
+        console.print(f"[bold red]Error:[/bold red] {error}{loc}")
 
 
 def get_ast(src) -> ast.FunctionDef:
     assert hasattr(src, "_ast") and hasattr(src, "_type"), "Invalid function"
     node = copy.deepcopy(src._ast)  # get a new copy to avoid overwriting
     node._type = src._type
+    node._source = src._source
     return node
 
 

@@ -94,6 +94,14 @@ class ASTPreProcessor(ast.NodeTransformer):
 
         self.scopes: list[Scope] = []
 
+    @staticmethod
+    def _copy_loc(new_node: ast.AST, old_node: ast.AST) -> ast.AST:
+        """Copy source location from old_node to new_node and fill missing locations in children."""
+        if isinstance(new_node, ast.AST) and hasattr(old_node, "lineno"):
+            ast.copy_location(new_node, old_node)
+            ast.fix_missing_locations(new_node)
+        return new_node
+
     def visit(self, node):
         """
         Visit a node.
@@ -103,7 +111,14 @@ class ASTPreProcessor(ast.NodeTransformer):
         method = "visit_" + node.__class__.__name__
         visitor = getattr(self, method, None)
         assert visitor is not None, f"{method} not found"
-        return visitor(node)
+        result = visitor(node)
+        # propagate source location
+        if isinstance(result, list):
+            for r in result:
+                self._copy_loc(r, node)
+        else:
+            self._copy_loc(result, node)
+        return result
 
     def put_var(self, name, val):
         assert (
@@ -886,7 +901,7 @@ class ASTPreProcessor(ast.NodeTransformer):
                 call_node = ast.Assign(
                     targets=[ast.Name(id=result_name, ctx=ast.Store())], value=callee
                 )
-                ast.copy_location(call_node, node)
+                self._copy_loc(call_node, node)
                 node_list.append(call_node)
                 values = []
                 res = ast.Name(id=result_name, ctx=ast.Load())
@@ -1082,7 +1097,7 @@ class ASTPreProcessor(ast.NodeTransformer):
                         orelse=[],
                         type_comment=attr,
                     )
-                    ast.copy_location(for_node, node)
+                    self._copy_loc(for_node, node)
                     if len(loops) > 0:
                         loops[-1].body.append(for_node)
                     loops.append(for_node)
@@ -1178,7 +1193,6 @@ class ASTPreProcessor(ast.NodeTransformer):
                     orelse=[],
                     type_comment="unroll",
                 )
-                ast.copy_location(for_node, node)
                 return for_node
         # compile time decidable branches
         if attr == "meta_if":
@@ -1191,7 +1205,6 @@ class ASTPreProcessor(ast.NodeTransformer):
                     body=self.visit_body(node.body),
                     orelse=[],
                 )
-                ast.copy_location(if_node, node)
                 return if_node
             return None
         if attr == "meta_elif":
@@ -1207,7 +1220,6 @@ class ASTPreProcessor(ast.NodeTransformer):
                     body=self.visit_body(node.body),
                     orelse=[],
                 )
-                ast.copy_location(if_node, node)
                 return if_node
             return None
         if attr == "meta_else":
@@ -1220,7 +1232,6 @@ class ASTPreProcessor(ast.NodeTransformer):
                 body=self.visit_body(node.body),
                 orelse=[],
             )
-            ast.copy_location(if_node, node)
             return if_node
         raise NotImplementedError
 
@@ -1443,6 +1454,7 @@ class ASTPreProcessor(ast.NodeTransformer):
                 if node.returns is None and not isinstance(new_body[-1], ast.Return):
                     new_body.append(ast.Return())
                 node.body = new_body
+        ast.fix_missing_locations(node)
         return node
 
     def visit_FunctionDef(self, node: ast.FunctionDef, instantiate: list = None):
@@ -1546,7 +1558,7 @@ class ASTPreProcessor(ast.NodeTransformer):
                         keywords=[],
                     ),
                 )
-                ast.copy_location(op, node)
+                self._copy_loc(op, node.body[0])  # function entry
                 self.meta_ops.append(op)
                 new_body = self.visit_body(node.body)
                 new_body.append(ast.Return())

@@ -35,7 +35,7 @@ from allo.spmw import FunctionType as FuncType
 from allo.utils import register_dialect
 from allo.memory import Layout
 from allo.ir.utils import MockArg, MockCallResultTuple
-from .utils import SymbolTable, Scope
+from .utils import report_error, SymbolTable, Scope
 from .builtin import BUILTIN_HANDLERS
 
 
@@ -57,6 +57,7 @@ class IRBuilder(ast.NodeVisitor):
         self.module: Module = None
 
         self.current_func: func_d.FuncOp = None  # the function under construction
+        self.func_name: str = None
         self.reserved_bindings = {}
 
         self.ip_stack = []  # module insert pointes
@@ -80,7 +81,14 @@ class IRBuilder(ast.NodeVisitor):
         method = "visit_" + node.__class__.__name__
         visitor = getattr(self, method, None)
         assert visitor is not None, f"{method} not found"
-        return visitor(node)
+        try:
+            return visitor(node)
+        except Exception as e:
+            if not getattr(e, "_reported", False) and self.func_name is not None:
+                source_file = self.symbol_table.functions[self.func_name]._source
+                report_error(e, node, source_file=source_file)
+                e._reported = True
+            raise
 
     def set_ip(self, ip):
         if not isinstance(ip, InsertionPoint):
@@ -141,8 +149,10 @@ class IRBuilder(ast.NodeVisitor):
             # set up global operations
             for op in self.symbol_table.global_ops:
                 self.visit(op)
-            for func_node in self.symbol_table.functions.values():
+            for name, func_node in self.symbol_table.functions.items():
+                self.func_name = name
                 self.visit(func_node)
+                self.func_name = None
             self.pop_ip()
             return self.module
 

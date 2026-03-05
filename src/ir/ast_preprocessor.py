@@ -116,9 +116,10 @@ class ASTPreProcessor(ast.NodeTransformer):
         except Exception as e:
             if not getattr(e, "_reported", False):
                 name = self.current_func or self.current_namespace
-                source_file = self.symbol_table.functions[name]._source
-                report_error(e, node, source_file=source_file)
-                e._reported = True
+                if name is not None:
+                    source_file = self.symbol_table.functions[name]._source
+                    report_error(e, node, source_file=source_file)
+                    e._reported = True
             raise
         # propagate source location
         if isinstance(result, list):

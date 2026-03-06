@@ -81,8 +81,18 @@ class IRBuilder(ast.NodeVisitor):
         method = "visit_" + node.__class__.__name__
         visitor = getattr(self, method, None)
         assert visitor is not None, f"{method} not found"
+
         try:
-            return visitor(node)
+            loc = Location.file(
+                self.symbol_table.functions[self.func_name]._source,
+                node.lineno,
+                node.col_offset,
+            )
+        except:
+            loc = Location.unknown()
+        try:
+            with loc:
+                return visitor(node)
         except Exception as e:
             if not getattr(e, "_reported", False) and self.func_name is not None:
                 source_file = self.symbol_table.functions[self.func_name]._source

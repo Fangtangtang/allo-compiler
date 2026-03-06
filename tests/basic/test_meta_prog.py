@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import numpy as np
-from src.main import process
+from src.main import build, process
 import allo
 from allo.ir.types import int32
 from allo.template import meta_for as allo_for
@@ -221,6 +221,50 @@ def test_meta_if():
     assert np.allclose(s(np_A), gold)
 
 
+def test_unroll_meta_for():
+    from src.passes.meta_programming import unroll_meta_for
+
+    @kernel
+    def kernel1(A: int32[20]) -> int32[20]:
+        with allo.meta_for(10) as i:
+            A[i] = i
+        return A
+
+    module, top_name = build(kernel1)
+    assert "affine.for" in str(module) and '"unroll"' in str(module)
+    unroll_meta_for(module)
+    assert "affine.for" not in str(module)
+
+    @kernel
+    def kernel2(A: int32[20]) -> int32[20]:
+        with allo.meta_for(4) as i:
+            with allo.meta_for(5) as j:
+                A[i * 5 + j] = i
+        return A
+
+    module, top_name = build(kernel2)
+    print(module)
+    assert "affine.for" in str(module) and '"unroll"' in str(module)
+    unroll_meta_for(module)
+    assert "affine.for" not in str(module)
+
+    @kernel
+    def kernel3(A: int32[20]) -> int32[20]:
+        inc: int32 = 0
+        with allo.meta_for(4) as i:
+            with allo.meta_for(5) as j:
+                A[i * 5 + j] = i
+            inc += i
+        return A
+
+    module, top_name = build(kernel3)
+    print(module)
+    assert "affine.for" in str(module) and '"unroll"' in str(module)
+    unroll_meta_for(module)
+    assert "affine.for" not in str(module)
+
+
 if __name__ == "__main__":
     test_meta_for()
     test_meta_if()
+    test_unroll_meta_for()

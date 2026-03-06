@@ -45,4 +45,4 @@ def test_shard_2D():
 
 if __name__ == "__main__":
     test_shard_1D()
-    # test_shard_2D()
+    test_shard_2D()

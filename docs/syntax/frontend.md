@@ -114,23 +114,6 @@ Refinement types extend an existing type, including [base type](#base-data-types
 Type @ Refinement
 ```
 
-#### 🔀Tensor Layouts
-**Note:** reading dataflow [unit and work definitions](#programs) helps understanding.
-
-The `Layout` class provides a declarative way to specify how global tensors are partitioned and mapped to [works](#works).
-It encodes a partitioning scheme for a tensor. For each tensor dimension, specify either:
-* `Shard(axis)`: Partition this dimension across the specified grid axis
-* `Replicate`: Keep this dimension fully replicated across all works
-
-For example:
-```python
-from allo.memory import Layout
-
-S = Layout.Shard   # Shorthand for sharding
-R = Layout.Replicate  # Shorthand for replication
-```
-`local_A: int32[64, 64] @ [S(0), R]`: Shard first dimension on grid axis 0, replicate second dimension
-
 ## Function Definition 
 
 ### Function Signature
@@ -487,8 +470,46 @@ for i, j in allo.grid(M, M):
 
 ## Built-in Functions
 ### 🔀Meta Functions
-#### `get_wid()`
-<!-- TODO -->
+**Note:** reading dataflow [unit and work definitions](#programs) helps understanding.
+
+#### `axes()`
+Only used in [works](#works).
+
+Returns a tuple of axes of the work grid.  
+The result must be unpacked. Each element is an axis object that can be used in [shard](#tensorshardaxes). The coordinate of the current work along that axis is available via `.id`.
+
+For example:
+```python
+x, y = spmw.axes() # axes of 2D work grid
+wid: index = x.id # coordinate along axis x
+``` 
+
+#### `Tensor.shard(axes)`
+Applies sharding to a global tensor `Tensor`.
+This function provides a way to specify how global tensors are partitioned and mapped to [works](#works).
+
+Only used in [works](#works) for tensor partitioning. It's recommended to use this at the beginning of a work function.
+
+`axes` is a list whose length must match the rank of the tensor.  
+Each element specifies how the corresponding tensor dimension is mapped to the work grid:
+
+- `None`: the dimension is replicated across all works.
+- `axis`: must be an axis object returned by [axes()](#axes). the dimension is sharded along the given work-grid axis.
+
+When a dimension is sharded, its size must be evenly divisible by the number of works along that axis.
+
+For example:
+```python
+@spmw.unit()
+def top(A: int32[1, 1024], B: int32[2, 1024]):
+    @spmw.work(grid=[2, 4])
+    def core():
+        x, y = spmw.axes() # axes of the work grid
+        local_A = A.shard([None, y]) # replicate first dimension, shard second dimension along axis y
+        local_B: int32[1, 256] = B.shard([x, y]) # shard both dimensions
+        wid: index = x.id # coordinate along axis x
+        local_B[:] = local_A + wid
+```
 
 
 ## Programs
@@ -496,7 +517,7 @@ An Allo program consists of [**functions**](#function-definition) annotated with
 
 * [`@kernel`](#kernels): Defines a basic Allo kernel.
 * 🔀[`@unit()`](#units): Defines an SPMW module.
-* 🔀[`@work(mapping: list[int], inputs=None, outputs=None)`](#works): Defines a work within an SPMW module. 
+* 🔀[`@work(grid: list[int])`](#works): Defines a work within an SPMW module. 
     * A function annotated with `@work` must be declared inside a `@unit` function and cannot exist independently.
 
 ### Kernels
@@ -529,20 +550,15 @@ Symbols include:
 * Names of resource declared inside the unit (e.g., streams).
 
 ### 🔀Works
-A function decorated with `@work(mapping: list[int], inputs=None, outputs=None)` declares a set of work instances defined by the same work program. The function signature **must not have a return value**. 
-The parameters are:
-* `mapping`: Defines a high-dimensional grid, where each grid point corresponds to one work instance. Must be a list of [compile-time constants](#compile-time-constants) (positive integer). Grid axes are 0-based integers.
+A function decorated with `@work(grid: list[int])` declares a set of work instances defined by the same work program. The function has no arguments and **must not have a return value**. 
+The decorator parameters are:
+* `grid`: Defines a high-dimensional grid, where each grid point corresponds to one work instance. Must be a list of [compile-time constants](#compile-time-constants) (positive integer). Grid axes are 0-based integers.
     * For example:
         ```txt
         Kernel mapping: [P0, P1, P2] -> 3D grid with axes 0, 1, 2
                          |   |   |
                          0   1   2  <- grid axes
         ```
-* `inputs` (optional): A list of [symbols](#symbols-in-a-unit) from the top-level unit's namespace. These symbols are **aliased to the first `len(inputs)` arguments** of the function signature, in order from left to right.
-* `outputs` (optional): A list of [symbols](#symbols-in-a-unit) from the top-level unit's namespace. These symbols are **aliased to the last `len(outputs)` arguments** of the function signature, in order from right to left.
-
-The length of the function's parameter list must equal `len(inputs) + len(outputs)`.
-Each function parameter must be a [tensor type](#tensor-types), optionally annotated with a [layout refinement type](#tensor-layouts). If the layout refinement type is omitted, the tensor defaults to replicated along all grid dimensions (i.e., every work instance receives the full tensor).
 
 The function body describes the behavior of this work instance.
 Call expressions inside the function body can invoke **other units**, enabling hierarchical design.
@@ -552,26 +568,28 @@ For example:
 @spmw.unit()
 def top(A: int32[1024], B: int32[1024]):
     # grid: (1,)
-    @spmw.work(mapping=[1], inputs=[A], outputs=[B])
-    def core(local_A: int32[1024], local_B: int32[1024]):
-        local_B[:] = local_A + 1
+    @spmw.work(grid=[1])
+    def core():
+        B[:] = A + 1
 ```
-**Explanation**:
-* `local_A` is an alias for the top-level unit's input `A`. Because it is used as a work input, this automatically makes `A` an input of the unit `top`.
-* `local_B` is an alias for the top-level unit's output `B`. Because it is used as a work output, this automatically makes `B` an output of the unit `top`.
 
 ```python
 @spmw.unit()
 def top(A: int32[1024], B: int32[1024]):
     # grid: (4,)
-    @spmw.work(mapping=[4], inputs=[A], outputs=[B])
-    def core(local_A: int32[1024] @ [S(0)], local_B: int32[1024] @ [S(0)]):
+    @spmw.work(grid=[4])
+    def core():
+        x = spmw.axes() # axes of the work grid
+        local_A = A.shard([x])
+        # type annotation is optional
+        local_B: int32[256] = B.shard([x])
         local_B[:] = local_A + 1
 ```
 **Explanation**: This defines works over a 1D grid of size 4.
-The work argument types use [Tensor Layouts refinement types](#tensor-layouts). The annotation `[S(0)]` specifies that the first dimension of the 1D tensor is sharded along grid dimension `0`.
+`spmw.axes()` returns the grid axes. Since the grid is 1D, `x` is the only axis.
+`A.shard([x])` specifies that the first dimension of the 1D tensor is sharded along grid dimension `x`.
 Since the global tensor size is 1024 and the grid size is 4, each work instance receives a local tile of size: `1024 // 4 = 256`.
-Because `local_A` and `local_B` are aliases of the top unit's `A` and `B`, for each grid point:
+For each grid point:
 * `local_A` refers to a 256-element shard of `A`
 * `local_B` refers to a 256-element shard of `B`
 
@@ -583,8 +601,6 @@ Respectively, the works operate on disjoint slices:
 
 #### Scoping Rules
 All [symbols](#symbols-in-a-unit) defined inside the top unit are visible to its works. 
-
-However, if a symbol appears in a work's `inputs` or `outputs` in the decorator, it is aliased to a corresponding work parameter. In this case, the original symbol is shadowed and cannot be directly accessed inside the work's function body.
 
 ## Others
 ### Templates

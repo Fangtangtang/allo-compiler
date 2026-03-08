@@ -13,7 +13,6 @@ from allo._mlir.ir import (
     Operation,
     FlatSymbolRefAttr,
 )
-from allo._mlir.extras.dialects import allo as allo
 from allo._mlir.dialects import (
     allo as allo_d,
     func as func_d,
@@ -53,7 +52,7 @@ def parse_namespace(unit_module):
         for op in func_block.operations:
             if isinstance(op, allo_d.GridMapOp):
                 grid = list(op.grid)
-                is_input = allo.GridMap.get_interface(op)
+                is_input = op.interfaces
                 for block in op.body:
                     for sub_op in block.operations:
                         if isinstance(sub_op, func_d.CallOp):

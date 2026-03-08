@@ -6,8 +6,9 @@ from contextlib import contextmanager
 import allo._mlir.extras.types as mlir_types
 from allo._mlir.extras.dialects.affine import AffExpr
 
-from allo._mlir.extras.dialects import allo as allo, func as func
+from allo._mlir.extras.dialects import func as func
 from allo._mlir.dialects import (
+    allo as allo_d,
     func as func_d,
     memref as memref_d,
     affine as affine_d,
@@ -598,7 +599,8 @@ class IRBuilder(ast.NodeVisitor):
                 [p.axis if isinstance(p, Layout.Shard) else -1 for p in spec.partitions]
             )
         with self.get_ip():
-            block = allo.GridMap.build(inputs, outputs, shardings, grid)
+            op = allo_d.GridMapOp(inputs, outputs, shardings, grid)
+            block = op.block
         func_d.CallOp(
             [],
             FlatSymbolRefAttr.get(callee_name),

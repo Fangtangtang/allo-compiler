@@ -10,7 +10,6 @@ from .ir.ast_preprocessor import ASTPreProcessor
 from .ir.ir_builder import IRBuilder
 from allo.backend.llvm import LLVMModule
 from allo.backend.hls import HLSModule
-from allo.backend.simulator import LLVMOMPModule
 from allo._mlir.dialects import allo as allo_d, func as func_d
 from allo._mlir.passmanager import PassManager as mlir_pass_manager
 

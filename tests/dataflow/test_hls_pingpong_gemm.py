@@ -21,7 +21,8 @@ def test_cooperative_gemm():
 
         @spmw.work(grid=[P0, P1])
         def gemm0():
-            pi, pj = spmw.get_wid()
+            x, y = spmw.axes()
+            pi, pj = x.id, y.id
             C_out: Ty[Mt, Nt] = 0
             for i in range(pi * Mt, (pi + 1) * Mt):
                 for j in range(pj * Nt, (pj + 1) * Nt):
@@ -33,7 +34,8 @@ def test_cooperative_gemm():
 
         @spmw.work(grid=[P0, P1])
         def gemm1():
-            pi, pj = spmw.get_wid()
+            x, y = spmw.axes()
+            pi, pj = x.id, y.id
             C_out: Ty[Mt, Nt] = pipe[pi, pj].get()
             for i in range(pi * Mt, (pi + 1) * Mt):
                 for j in range(pj * Nt, (pj + 1) * Nt):

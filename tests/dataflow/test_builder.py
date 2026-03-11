@@ -4,10 +4,6 @@
 from src.main import process_spmw
 from allo.ir.types import int32, ConstExpr, index
 from allo import spmw
-from allo.memory import Layout
-
-S = Layout.Shard
-R = Layout.Replicate
 
 
 def test_shard_1D():

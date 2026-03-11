@@ -7,10 +7,6 @@ from src.hls import to_hls
 import allo.backend.hls as hls
 from allo.ir.types import int32, ConstExpr, index
 from allo import spmw
-from allo.memory import Layout
-
-S = Layout.Shard
-R = Layout.Replicate
 
 
 def test_get_wid_1D_1():
@@ -42,7 +38,8 @@ def test_get_wid_1D_2():
     def top(A: int32[vlen], B: int32[vlen]):
         @spmw.work(grid=[P])
         def core():
-            pi: ConstExpr[index] = spmw.get_wid()
+            x = spmw.axes()
+            pi: ConstExpr[index] = x.id
             for i in range(tlen * pi, tlen * (pi + 1)):
                 B[i] = A[i] + 1
 

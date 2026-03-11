@@ -13,14 +13,14 @@ from allo import spmw
 def test1():
     @spmw.unit()
     def vadd[L](A: int32[L], B: int32[L]):
-        @spmw.work(mapping=[1])
+        @spmw.work(grid=[1])
         def core():
             for i in allo.grid(L):
                 B[i] = A[i] + 1
 
     @spmw.unit()
     def top(A: int32[1024], B: int32[1024]):
-        @spmw.work(mapping=[1])
+        @spmw.work(grid=[1])
         def core():
             vadd[1024](A, B)
 
@@ -38,9 +38,10 @@ def test2():
 
     @spmw.unit()
     def inner[P0, P1](A: float32[M, K], B: float32[K, N], C: float32[M, N]):
-        @spmw.work(mapping=[P0, P1])
+        @spmw.work(grid=[P0, P1])
         def gemm():
-            pi, pj = spmw.get_wid()
+            x, y = spmw.axes()
+            pi, pj = x.id, y.id
             Mt: ConstExpr[int32] = M // P0
             Nt: ConstExpr[int32] = N // P1
             for i in range(pi * Mt, (pi + 1) * Mt):
@@ -50,10 +51,10 @@ def test2():
 
     @spmw.unit()
     def top(A: float32[M, K], B: float32[K, N], C1: float32[M, N], C2: float32[M, N]):
-        @spmw.work(mapping=[2])
+        @spmw.work(grid=[2])
         def wrapper():
-            i = spmw.get_wid()
-            if i == 0:
+            x = spmw.axes()
+            if x.id == 0:
                 inner[2, 2](A, B, C1)
             else:
                 inner[4, 4](A, B, C2)
@@ -72,10 +73,10 @@ def test2():
 
     @spmw.unit()
     def top2(A: float32[M, K], B: float32[K, N], C1: float32[M, N], C2: float32[M, N]):
-        @spmw.work(mapping=[2])
+        @spmw.work(grid=[2])
         def wrapper():
-            i = spmw.get_wid()
-            if i == 0:
+            x = spmw.axes()
+            if x.id == 0:
                 inner[2, 2](A, B, C1)
             else:
                 inner[2, 2](A, B, C2)

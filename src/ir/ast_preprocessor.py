@@ -1037,7 +1037,7 @@ class ASTPreProcessor(ast.NodeTransformer):
                 if isinstance(value, ast.arg):
                     self.put_var(node.target.id, value)
                     return None
-                value = self.visit_cast(self.visit(node.value), dtype)
+                value = self.visit_cast(value, dtype)
                 node.value = self.visit_broadcast(value, dtype, shape)
             self.put_var(node.target.id, node.target)
         node.target.dtype = node.dtype = dtype

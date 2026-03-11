@@ -30,9 +30,9 @@ def build(fn: Union[Callable, str], instantiate: list = None, typing: str = None
         for node in symbol_table.functions.values():
             print(ast.unparse(node), "\n")
         print()
-        builder = IRBuilder(symbol_table)
-        module = builder.build()
-        return module, top_name
+        # builder = IRBuilder(symbol_table)
+        # module = builder.build()
+        # return module, top_name
 
 
 def process(fn: Union[Callable, str], instantiate: list = None, typing: str = None):
@@ -48,9 +48,10 @@ def process_spmw(fn: Union[Callable, str], instantiate: list = None):
     """
     Compile the input function in SPMW model.
     """
-    module, top_name = build(fn, instantiate)
-    print(module)
-    return module, top_name
+    build(fn, instantiate)
+    # module, top_name = build(fn, instantiate)
+    # print(module)
+    # return module, top_name
 
 
 def to_hls(fn: Union[Callable, str], instantiate: list = None, project=None):

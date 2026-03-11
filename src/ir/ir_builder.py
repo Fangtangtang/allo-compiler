@@ -583,7 +583,7 @@ class IRBuilder(ast.NodeVisitor):
         callee_name = callee.name
         grid, inputs, outputs, shared = None, None, None, None
         for kw in callee.decorator_list[0].keywords:
-            if kw.arg == "mapping":
+            if kw.arg == "grid":
                 grid = [c.value for c in kw.value.elts]
             elif kw.arg == "inputs":
                 inputs = [(self.get_op_result(self.visit(e))) for e in kw.value.elts]

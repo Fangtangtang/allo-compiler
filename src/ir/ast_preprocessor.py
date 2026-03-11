@@ -7,6 +7,7 @@ from typing import Union
 from collections import deque, ChainMap
 from contextlib import contextmanager
 from collections.abc import Callable
+from dataclasses import dataclass
 import numpy as np
 import sympy
 from .utils import get_ast, report_error, SymbolTable, Scope, ErrorValue
@@ -25,6 +26,12 @@ from allo.ir.types import (
 )
 from allo.memory import Layout
 from .builtin import BUILTIN_HANDLERS
+
+
+@dataclass(frozen=True)
+class Axes:
+    idx: int
+    wid: ast.Name
 
 
 class ASTPreProcessor(ast.NodeTransformer):
@@ -161,27 +168,22 @@ class ASTPreProcessor(ast.NodeTransformer):
             scope = self.scopes[i]
             if name in scope.vars:
                 var = scope.vars[name]
-                if self.current_namespace is not None and hasattr(var, "type_comment"):
+                if self.current_namespace is not None and isinstance(var, ast.arg):
                     # self.current_func -> not directly under UNIT (namespace)
                     if self.current_func is not None:
-                        if var.type_comment == "dtensor":
-                            # update to mark it as shared resource
-                            var.type_comment = "shared"
-                        if var.type_comment == "shared":
-                            # current shared resource are top module's args
-                            assert isinstance(var, ast.arg)
-                            work_def = self.symbol_table.functions[self.current_func]
-                            assert hasattr(work_def, "shared_kw")  # shared resources
-                            for idx, v in enumerate(work_def.shared_kw.value.elts):
-                                if v.id == name:
-                                    return work_def.args.args[idx]
-                            work_def.shared_kw.value.elts.append(
-                                ast.Name(id=name, ctx=ast.Load())
-                            )  # add as new argument
-                            arg = copy.deepcopy(var)
-                            work_def.args.args.append(arg)
-                            self.scopes[i + 1].vars[name] = arg
-                            return arg
+                        name = var.arg
+                        work_def = self.symbol_table.functions[self.current_func]
+                        assert hasattr(work_def, "arg_kw")  # shared resources
+                        for idx, v in enumerate(work_def.arg_kw.value.elts):
+                            if v.id == name:
+                                return work_def.args.args[idx]
+                        work_def.arg_kw.value.elts.append(
+                            ast.Name(id=name, ctx=ast.Load())
+                        )  # add as new argument
+                        arg = copy.deepcopy(var)
+                        work_def.args.args.append(arg)
+                        self.scopes[i + 1].vars[name] = arg
+                        return arg
                 return var
             if name in scope.consts:
                 return scope.consts[name]
@@ -276,7 +278,7 @@ class ASTPreProcessor(ast.NodeTransformer):
         Returns:
             dtype: data type.
             shape: The shape of the type.
-            refinement: type refinement. Layout, Stateful, Memory, etc.
+            refinement: type refinement. Stateful, Memory, etc.
         """
         if isinstance(annotation, ast.Name):
             # e.g., A: int32
@@ -333,8 +335,6 @@ class ASTPreProcessor(ast.NodeTransformer):
                 stateful_dtype = copy.deepcopy(dtype)
                 stateful_dtype.stateful = True
                 return stateful_dtype, shape, spec
-            if isinstance(refinement_type, list):
-                refinement_type = Layout(refinement_type)
             return dtype, shape, refinement_type
         if isinstance(annotation, ast.Constant):  # template
             assert isinstance(annotation.value, str)
@@ -587,6 +587,8 @@ class ASTPreProcessor(ast.NodeTransformer):
                 return var
             if isinstance(var, ast.Name):
                 node.id = var.id  # redirect symbol
+            if isinstance(var, ast.arg):
+                node.id = var.arg  # redirect symbol
             node.dtype, node.shape = var.dtype, var.shape
             return node
         # compile time constant
@@ -885,7 +887,7 @@ class ASTPreProcessor(ast.NodeTransformer):
         assert len(targets) == len(symbols), "Invalid assignment, number mismatch"
         for target, symbol in zip(targets, symbols):
             target_ = self.get_symbol(target.id, allow_missing=True)
-            assert target_ is None, "symbol should be constexpr, cannot be reassigned."
+            assert target_ is None, "symbol cannot be reassigned."
             self.put_var(target.id, val=symbol)
 
     def visit_Assign(self, node: ast.Assign):
@@ -903,6 +905,10 @@ class ASTPreProcessor(ast.NodeTransformer):
             callee = self.visit(node.value)
             if isinstance(callee, list):  # list of symbols
                 self.visit_assign_symbol(targets, callee)
+                return None
+            if isinstance(callee, ast.arg):  # sharded data
+                assert len(targets) == 1
+                self.put_var(name=targets[0].id, val=callee)
                 return None
             if len(targets) > 1:
                 # function call with multiple returns
@@ -1020,6 +1026,10 @@ class ASTPreProcessor(ast.NodeTransformer):
             return None
         else:
             if node.value is not None:
+                value = self.visit(node.value)
+                if isinstance(value, ast.arg):
+                    self.put_var(node.target.id, value)
+                    return None
                 value = self.visit_cast(self.visit(node.value), dtype)
                 node.value = self.visit_broadcast(value, dtype, shape)
             self.put_var(node.target.id, node.target)
@@ -1203,45 +1213,6 @@ class ASTPreProcessor(ast.NodeTransformer):
                     type_comment="unroll",
                 )
                 return for_node
-        # compile time decidable branches
-        if attr == "meta_if":
-            assert len(node.items[0].context_expr.args) == 1, "Invalid meta_if"
-            cond = bool(self.eval_constant(node.items[0].context_expr.args[0]))
-            self.meta_cond.append(cond)
-            if cond:
-                if_node = ast.If(
-                    test=ast.Constant(value=cond),
-                    body=self.visit_body(node.body),
-                    orelse=[],
-                )
-                return if_node
-            return None
-        if attr == "meta_elif":
-            assert len(node.items[0].context_expr.args) == 1, "Invalid meta_elif"
-            assert len(self.meta_cond) > 0, "Invalid meta_elif"
-            if self.meta_cond[-1]:
-                return None  # else branch won't hit
-            cond = bool(self.eval_constant(node.items[0].context_expr.args[0]))
-            self.meta_cond[-1] = cond
-            if cond:
-                if_node = ast.If(
-                    test=ast.Constant(value=cond),
-                    body=self.visit_body(node.body),
-                    orelse=[],
-                )
-                return if_node
-            return None
-        if attr == "meta_else":
-            assert len(node.items[0].context_expr.args) == 0, "Invalid meta_else"
-            assert len(self.meta_cond) > 0, "Invalid meta_else"
-            if self.meta_cond.pop():
-                return None  # else branch won't hit
-            if_node = ast.If(
-                test=ast.Constant(value=True),
-                body=self.visit_body(node.body),
-                orelse=[],
-            )
-            return if_node
         raise NotImplementedError
 
     def visit_call_kernel(self, orig_node: ast.Call, func, instantiate: list = None):
@@ -1313,6 +1284,56 @@ class ASTPreProcessor(ast.NodeTransformer):
             return call_op
         raise NotImplementedError
 
+    def visit_method(self, node: ast.Call):
+        obj = node.func.value
+        attr: str = node.func.attr
+        var = self.visit(node.func.value)
+        # stream's methods
+        if attr in {"put", "get"}:
+            assert isinstance(var.dtype, Stream) and len(var.shape) == 0
+            return self.visit_stream_method_call(node, var)
+        # data sharding
+        if attr == "shard":
+            assert isinstance(obj, ast.Name) and self.current_namespace is not None
+            arg_name = obj.id
+            arg = self.get_symbol(arg_name)
+            if isinstance(getattr(arg, "spec", None), Layout):
+                raise RuntimeError("Cannot shard the same tensor multiple times.")
+            assert isinstance(arg, ast.arg)
+            work_def = self.symbol_table.functions[self.current_func]
+            assert len(node.args) == 1 and isinstance(node.args[0], ast.List)
+            axes = node.args[0].elts
+            assert len(axes) == len(arg.shape), "Invalid sharding"
+            partitions = []
+            for axe in axes:
+                if isinstance(axe, ast.Constant) and axe_value.value is None:
+                    partitions.append(Layout.Replicate)
+                elif isinstance(axe, ast.Name):
+                    axe_value = self.get_symbol(axe.id)
+                    assert isinstance(axe_value, Axes)
+                    partitions.append(Layout.Shard(axe_value.idx))
+                else:
+                    raise NotImplementedError
+            spec = Layout(partitions)
+            # find the argument and update type
+            for work_arg in work_def.args.args:
+                if work_arg.arg == arg_name:
+                    self.reset_type(
+                        work_arg,
+                        shape=tuple(spec.shard(work_arg.shape, work_def.grid)),
+                        spec=spec,
+                    )
+                    self.put_var(
+                        arg_name,
+                        ErrorValue(arg_name, "The variable is invalid after sharding."),
+                    )
+                    return work_arg
+            raise RuntimeError("unreachable")
+        # get work id
+        if attr == "id":
+            assert isinstance(var, Axes)
+        return None
+
     def visit_Call(self, node: ast.Call):
         if isinstance(node.func, ast.Name):
             # FIXME: tentative!!!
@@ -1362,13 +1383,10 @@ class ASTPreProcessor(ast.NodeTransformer):
                 assert attr in self.work_meta, f"{attr} must be in work."
                 values = self.work_meta[attr]
                 return values  # list of symbols
-            try:
-                var = self.visit(node.func.value)
-                # stream's methods
-                if isinstance(var.dtype, Stream) and len(var.shape) == 0:
-                    return self.visit_stream_method_call(node, var)
-            except:
-                pass
+            # builtin methods
+            ret = self.visit_method(node)
+            if ret is not None:
+                return ret
         # TODO
         return node
 
@@ -1446,7 +1464,6 @@ class ASTPreProcessor(ast.NodeTransformer):
             with self.namespace(node):
                 # arguments
                 for arg in node.args.args:
-                    arg.type_comment = "dtensor"  # dataflow args are dtensor by default
                     self.put_var(name=arg.arg, val=arg)
                 # unit region
                 node.body = self.visit_body(node.body)
@@ -1479,89 +1496,46 @@ class ASTPreProcessor(ast.NodeTransformer):
         node._source = self.symbol_table.functions[self.current_namespace]._source
         with self.block_scope():  # to support args shadowing
             # keywords
-            inputs, outputs, grid = None, None, []
+            grid = []
             for kw in node.decorator_list[0].keywords:
                 assert isinstance(kw.value, ast.List)
-                if kw.arg == "mapping":
+                if kw.arg == "grid":
                     elts_ = []
                     for c in kw.value.elts:
                         dim = self.visit_constant(c)
                         grid.append(dim.value)
                         elts_.append(dim)
                     kw.value.elts = elts_
-                elif kw.arg == "inputs" or kw.arg == "outputs":
-                    # if `unit`` argument is in args, cannot access in `work``
-                    for arg in kw.value.elts:
-                        arg_ = self.get_symbol(arg.id)
-                        arg.dtype, arg.shape = arg_.dtype, arg_.shape
-                        assert isinstance(arg, ast.Name) and arg_
-                        self.put_var(
-                            arg.id, ErrorValue(arg.id, "shadowed by work's arg list")
-                        )
-                    if kw.arg == "inputs":
-                        inputs = kw.value.elts
-                    else:
-                        outputs = kw.value.elts
                 else:
                     raise RuntimeError("Invalid work declaration")
-            if inputs is None:
-                inputs = []
-                node.decorator_list[0].keywords.append(
-                    ast.keyword("inputs", ast.List(inputs))
-                )
-            if outputs is None:
-                outputs = []
-                node.decorator_list[0].keywords.append(
-                    ast.keyword("outputs", ast.List(outputs))
-                )
-            node.shared_kw = ast.keyword("shared", ast.List([]))
-            node.decorator_list[0].keywords.append(node.shared_kw)
-            args = inputs + outputs
+            node.grid = grid
+            node.arg_kw = ast.keyword("args", ast.List([]))
+            node.decorator_list[0].keywords.append(node.arg_kw)
             node, _ = self.visit_function_signature(node, instantiate=instantiate)
             assert (
-                node.returns is None
-            ), "Invalid work. work should not have return value."
+                node.returns is None and len(node.args.args) == 0
+            ), "Invalid work. work should not have return value or arguments."
             # check arg mapping
-            assert len(node.args.args) == len(
-                args
-            ), "Invalid inputs / outputs mapping, number mismatch."
-            for arg, callee_arg in zip(args, node.args.args):
-                assert len(callee_arg.shape) > 0, "work's arguments should be tensors"
-                assert (
-                    arg.dtype == callee_arg.dtype and arg.shape == callee_arg.shape
-                ), "Invalid inputs / outputs mapping, type mismatch."
-                # sharding
-                spec = getattr(callee_arg, "spec", None)
-                if spec is None:
-                    spec = Layout([Layout.Replicate] * len(arg.shape))
-                assert isinstance(
-                    spec, Layout
-                ), f"Invalid type refinement: {callee_arg.spec}"
-                # update argument shape with local shape
-                self.reset_type(
-                    callee_arg,
-                    shape=tuple(spec.shard(callee_arg.shape, grid)),
-                    spec=spec,
-                )
             with self.function_scope(node):
                 # arguments
                 for arg in node.args.args:
                     self.put_var(name=arg.arg, val=arg)
                 # internally insert `get_wid` as the first statement (meta data setup)
-                targets = []
-                attr = "get_wid"
+                wids, axes = [], []
                 for i in range(len(grid)):
                     target = ast.Name(id=f"__wid_{i}", ctx=ast.Store())  # reserved word
                     target.dtype, target.shape = Index(), tuple()
                     target.dtype.constexpr = True  # immutable
-                    targets.append(target)
-                self.work_meta[attr] = targets
+                    axe = Axes(idx=i, wid=target)
+                    axes.append(axe)
+                    wids.append(target)
+                self.work_meta["axes"] = axes
                 op = ast.Assign(
-                    targets=targets,
+                    targets=wids,
                     value=ast.Call(
                         func=ast.Attribute(
                             value=ast.Name(id="__allo__", ctx=ast.Load()),
-                            attr=attr,
+                            attr="get_wid",
                             ctx=ast.Load(),
                         ),
                         args=[],
@@ -1575,7 +1549,9 @@ class ASTPreProcessor(ast.NodeTransformer):
                 node.body = self.meta_ops + new_body
                 self.work_meta.clear()
         call_node = ast.Call(
-            func=ast.Name(id=node.name, ctx=ast.Load()), args=args, keywords=[]
+            func=ast.Name(id=node.name, ctx=ast.Load()),
+            args=node.arg_kw.value.elts,
+            keywords=[],
         )
         return ast.Expr(value=call_node)
 

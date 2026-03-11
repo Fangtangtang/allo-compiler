@@ -18,6 +18,7 @@ def test_shard_1D():
         def core():
             x = spmw.axes()
             local_A = A.shard([x])
+            # local_ = A.shard([x])
             local_B: int32[256] = B.shard([x])
             local_B[:] = local_A + 1
 

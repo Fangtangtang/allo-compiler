@@ -18,21 +18,21 @@ def test_producer_consumer():
     def top(A: Ty[M, N], B: Ty[M, N]):
         pipe: Stream[Ty, 4]
 
-        @spmw.work(mapping=[1], inputs=[A])
-        def producer(local_A: Ty[M, N]):
+        @spmw.work(grid=[1])
+        def producer():
             for i, j in allo.grid(M, N):
                 # load data
-                out: Ty = local_A[i, j]
+                out: Ty = A[i, j]
                 # send data
                 pipe.put(out)
 
-        @spmw.work(mapping=[1], outputs=[B])
-        def consumer(local_B: Ty[M, N]):
+        @spmw.work(grid=[1])
+        def consumer():
             for i, j in allo.grid(M, N):
                 # receive data
                 data = pipe.get()
                 # computation
-                local_B[i, j] = data + 1
+                B[i, j] = data + 1
 
     A = np.random.rand(M, N).astype(np.float32)
     B = np.zeros((M, N), dtype=np.float32)

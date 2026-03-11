@@ -16,7 +16,7 @@ R = Layout.Replicate
 def test_get_wid_1D_1():
     @spmw.unit()
     def top(A: int32[1024], B: int32[1024]):
-        @spmw.work(mapping=[1])
+        @spmw.work(grid=[1])
         def core():
             for i in range(1024):
                 B[i] = A[i] + 1
@@ -40,7 +40,7 @@ def test_get_wid_1D_2():
 
     @spmw.unit()
     def top(A: int32[vlen], B: int32[vlen]):
-        @spmw.work(mapping=[P])
+        @spmw.work(grid=[P])
         def core():
             pi: ConstExpr[index] = spmw.get_wid()
             for i in range(tlen * pi, tlen * (pi + 1)):

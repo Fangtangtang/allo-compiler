@@ -15,13 +15,13 @@ def test_scalar_stream_1():
     def top1(A: int32[16, 16], B: int32[16, 16]):
         pipe: Stream[int32]
 
-        @spmw.work(mapping=[1], inputs=[A])
-        def producer(local_A: int32[16, 16]):
-            pipe.put(local_A[0, 0])
+        @spmw.work(grid=[1])
+        def producer():
+            pipe.put(A[0, 0])
 
-        @spmw.work(mapping=[1], outputs=[B])
-        def consumer(local_B: int32[16, 16]):
-            local_B[0, 0] = pipe.get()
+        @spmw.work(grid=[1])
+        def consumer():
+            B[0, 0] = pipe.get()
 
     if hls.is_available("vitis_hls"):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -37,15 +37,15 @@ def test_scalar_stream_2():
     def top2(A: int32[16, 16], B: int32[16, 16]):
         pipe: Stream[int32]
 
-        @spmw.work(mapping=[1], inputs=[A])
-        def producer(local_A: int32[16, 16]):
+        @spmw.work(grid=[1])
+        def producer():
             for i, j in allo.grid(16, 16):
-                pipe.put(local_A[i, j])
+                pipe.put(A[i, j])
 
-        @spmw.work(mapping=[1], outputs=[B])
-        def consumer(local_B: int32[16, 16]):
+        @spmw.work(grid=[1])
+        def consumer():
             for i, j in allo.grid(16, 16):
-                local_B[i, j] = pipe.get()
+                B[i, j] = pipe.get()
 
     if hls.is_available("vitis_hls"):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -61,17 +61,17 @@ def test_tensor_stream():
     def top(A: int32[16, 16], B: int32[16, 16]):
         pipe: Stream[int32][16, 16]
 
-        @spmw.work(mapping=[1], inputs=[A])
-        def producer(local_A: int32[16, 16]):
+        @spmw.work(grid=[1])
+        def producer():
             with allo.meta_for(16) as i:
                 with allo.meta_for(16) as j:
-                    pipe[i, j].put(local_A[i, j])
+                    pipe[i, j].put(A[i, j])
 
-        @spmw.work(mapping=[1], outputs=[B])
-        def consumer(local_B: int32[16, 16]):
+        @spmw.work(grid=[1])
+        def consumer():
             with allo.meta_for(16) as i:
                 with allo.meta_for(16) as j:
-                    local_B[i, j] = pipe[i, j].get()
+                    B[i, j] = pipe[i, j].get()
 
     if hls.is_available("vitis_hls"):
         with tempfile.TemporaryDirectory() as tmpdir:

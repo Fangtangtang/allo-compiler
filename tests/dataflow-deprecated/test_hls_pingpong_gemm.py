@@ -19,7 +19,7 @@ def test_cooperative_gemm():
     def top(A: Ty[M, K], B: Ty[K, N], C: Ty[M, N]):
         pipe: Stream[Ty[Mt, Nt], 2][P0, P1]
 
-        @spmw.work(mapping=[P0, P1])
+        @spmw.work(grid=[P0, P1])
         def gemm0():
             pi, pj = spmw.get_wid()
             C_out: Ty[Mt, Nt] = 0
@@ -31,7 +31,7 @@ def test_cooperative_gemm():
                     C_out[i - pi * Mt, j - pj * Nt] = c
             pipe[pi, pj].put(C_out)
 
-        @spmw.work(mapping=[P0, P1])
+        @spmw.work(grid=[P0, P1])
         def gemm1():
             pi, pj = spmw.get_wid()
             C_out: Ty[Mt, Nt] = pipe[pi, pj].get()

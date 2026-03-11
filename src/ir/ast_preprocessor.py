@@ -610,6 +610,12 @@ class ASTPreProcessor(ast.NodeTransformer):
         raise NotImplementedError
 
     def visit_Attribute(self, node: ast.Attribute):
+        # get work id
+        if node.attr == "id":
+            assert isinstance(node.value, ast.Name)
+            var = self.get_symbol(node.value.id)
+            assert isinstance(var, Axes)
+            return var.wid
         raise NotImplementedError
 
     def visit_Subscript(self, node: ast.Subscript):
@@ -902,14 +908,12 @@ class ASTPreProcessor(ast.NodeTransformer):
             else [node.targets[0]]
         )
         node_list = []
-        if isinstance(node.value, ast.Call):
+        if isinstance(node.value, (ast.Call, ast.Attribute)):
             callee = self.visit(node.value)
+            if getattr(callee, "is_symbol", False):  # used to redirect
+                callee = [callee]
             if isinstance(callee, list):  # list of symbols
                 self.visit_assign_symbol(targets, callee)
-                return None
-            if isinstance(callee, ast.arg):  # sharded data
-                assert len(targets) == 1
-                self.put_var(name=targets[0].id, val=callee)
                 return None
             if len(targets) > 1:
                 # function call with multiple returns
@@ -1018,10 +1022,9 @@ class ASTPreProcessor(ast.NodeTransformer):
                 self.put_const(node.target.id, node.value)
                 node.value.dtype, node.value.shape = dtype, shape
             except:
-                value = self.visit(node.value)
-                if isinstance(value, list):  # is symbol
+                if isinstance(node.value, ast.Attribute):  # is symbol
                     assert isinstance(dtype, Index)
-                    self.visit_assign_symbol([node.target], value)
+                    self.visit_assign_symbol([node.target], [self.visit(node.value)])
                 else:
                     raise RuntimeError("unreachable")
             return None
@@ -1328,11 +1331,10 @@ class ASTPreProcessor(ast.NodeTransformer):
                         arg_name,
                         ErrorValue(arg_name, "The variable is invalid after sharding."),
                     )
+                    # unique symbol, should be used to replace 'references'
+                    work_arg.is_symbol = True
                     return work_arg
             raise RuntimeError("unreachable")
-        # get work id
-        if attr == "id":
-            assert isinstance(var, Axes)
         return None
 
     def visit_Call(self, node: ast.Call):
@@ -1528,6 +1530,8 @@ class ASTPreProcessor(ast.NodeTransformer):
                     target = ast.Name(id=f"__wid_{i}", ctx=ast.Store())  # reserved word
                     target.dtype, target.shape = Index(), tuple()
                     target.dtype.constexpr = True  # immutable
+                    # unique symbol, should be used to replace 'references'
+                    target.is_symbol = True
                     axe = Axes(idx=i, wid=target)
                     axes.append(axe)
                     wids.append(target)

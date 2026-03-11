@@ -2,8 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from src.main import process_spmw
-from src.hls import to_hls
-from allo.ir.types import int32, float32, Stream, ConstExpr, index
+from allo.ir.types import int32, ConstExpr, index
 from allo import spmw
 from allo.memory import Layout
 
@@ -79,64 +78,49 @@ def test_get_wid_1D_1():
             for i in range(1024):
                 B[i] = A[i] + 1
 
-    mod = to_hls(top)
+    mod = process_spmw(top)
 
 
-# def test_get_wid_1D_2():
-#     vlen = 1024
-#     P = 4
-#     tlen = vlen // P
+def test_get_wid_1D_2():
+    vlen = 1024
+    P = 4
+    tlen = vlen // P
 
-#     @spmw.unit()
-#     def top(A: int32[vlen], B: int32[vlen]):
-#         @spmw.work(mapping=[P])
-#         def core():
-#             pi: ConstExpr[index] = spmw.get_wid()
-#             for i in range(tlen * pi, tlen * (pi + 1)):
-#                 B[i] = A[i] + 1
+    @spmw.unit()
+    def top(A: int32[vlen], B: int32[vlen]):
+        @spmw.work(grid=[P])
+        def core():
+            x = spmw.axes()
+            pi: ConstExpr[index] = x.id
+            for i in range(tlen * pi, tlen * (pi + 1)):
+                B[i] = A[i] + 1
 
-#     mod = to_hls(top)
+    mod = process_spmw(top)
 
+    @spmw.unit()
+    def top(A: int32[vlen], B: int32[vlen]):
+        @spmw.work(grid=[P])
+        def core():
+            x = spmw.axes()
+            pi = x.id
+            for i in range(tlen * pi, tlen * (pi + 1)):
+                B[i] = A[i] + 1
 
-# def test_cooperative_gemm():
-#     Ty = float32
-#     M, N, K = 16, 16, 16
-#     P0, P1 = 2, 2
-#     Mt, Nt = M // P0, N // P1
+    mod = process_spmw(top)
 
-#     @spmw.unit()
-#     def top(A: Ty[M, K], B: Ty[K, N], C: Ty[M, N]):
-#         pipe: Stream[Ty[Mt, Nt], 2][P0, P1]
+    @spmw.unit()
+    def top(A: int32[vlen], B: int32[vlen]):
+        @spmw.work(grid=[P])
+        def core():
+            x = spmw.axes()
+            for i in range(tlen * x.id, tlen * (x.id + 1)):
+                B[i] = A[i] + 1
 
-#         @spmw.work(mapping=[P0, P1])
-#         def gemm0():
-#             pi, pj = spmw.get_wid()
-#             C_out: Ty[Mt, Nt] = 0
-#             for i in range(pi * Mt, (pi + 1) * Mt):
-#                 for j in range(pj * Nt, (pj + 1) * Nt):
-#                     c: Ty = 0
-#                     for k in range(K // 2):
-#                         c += A[i, k] * B[k, j]
-#                     C_out[i - pi * Mt, j - pj * Nt] = c
-#             pipe[pi, pj].put(C_out)
-
-#         @spmw.work(mapping=[P0, P1])
-#         def gemm1():
-#             pi, pj = spmw.get_wid()
-#             C_out: Ty[Mt, Nt] = pipe[pi, pj].get()
-#             for i in range(pi * Mt, (pi + 1) * Mt):
-#                 for j in range(pj * Nt, (pj + 1) * Nt):
-#                     c: Ty = 0
-#                     for k in range(K // 2, K):
-#                         c += A[i, k] * B[k, j]
-#                     C[i, j] = C_out[i - pi * Mt, j - pj * Nt] + c
-
-#     s = process_spmw(top)
+    mod = process_spmw(top)
 
 
 if __name__ == "__main__":
-    # test_shard_1D()
-    # test_shard_2D()
+    test_shard_1D()
+    test_shard_2D()
     test_get_wid_1D_1()
-    # test_get_wid_1D_2()
-    # test_cooperative_gemm()
+    test_get_wid_1D_2()

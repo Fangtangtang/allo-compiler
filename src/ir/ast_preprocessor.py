@@ -1541,7 +1541,7 @@ class ASTPreProcessor(ast.NodeTransformer):
                     axes.append(axe)
                 self.work_meta["axes"] = axes
                 op = ast.Assign(
-                    targets=wids,  # FIXME: not right
+                    targets=[ast.Tuple(elts=wids, ctx=ast.Load())],
                     value=ast.Call(
                         func=ast.Attribute(
                             value=ast.Name(id="__allo__", ctx=ast.Load()),

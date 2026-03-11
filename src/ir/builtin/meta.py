@@ -13,7 +13,8 @@ import allo._mlir.extras.dialects.func as func
 class WidHandler(BuiltinHandler):
 
     def build(self, node: ast.Call, *args):
-        targets = args[0]
+        assert isinstance(args[0], list) and len(args[0]) == 1
+        targets = args[0][0].elts
         num = len(targets)
         callee = self.builder.current_func.name.value
         grid_name = self.builder.symbol_table.mangle_grid_name(callee)

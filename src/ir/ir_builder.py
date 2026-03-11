@@ -581,30 +581,39 @@ class IRBuilder(ast.NodeVisitor):
 
     def visit_work(self, callee: ast.FunctionDef):
         callee_name = callee.name
-        grid, inputs, outputs, shared = None, None, None, None
+        grid, top_args = None, None
         for kw in callee.decorator_list[0].keywords:
             if kw.arg == "grid":
                 grid = [c.value for c in kw.value.elts]
-            elif kw.arg == "inputs":
-                inputs = [(self.get_op_result(self.visit(e))) for e in kw.value.elts]
-            elif kw.arg == "outputs":
-                outputs = [self.get_op_result(self.visit(e)) for e in kw.value.elts]
-            elif kw.arg == "shared":
-                shared = [(self.get_op_result(self.visit(e))) for e in kw.value.elts]
-        shardings = []
-        for arg in callee.args.args[: len(inputs + outputs)]:
-            # TODO: attach related attributes?
+            elif kw.arg == "args":
+                top_args = [(self.get_op_result(self.visit(e))) for e in kw.value.elts]
+        shardings, grid_args = [], []
+        call_args = []
+        assert len(top_args) == len(callee.args.args)
+        for arg, top_arg in zip(callee.args.args, top_args):
             dtype, shape, spec, type_hint = self.parse_type_ann(arg.annotation)
-            shardings.append(
-                [p.axis if isinstance(p, Layout.Shard) else -1 for p in spec.partitions]
-            )
+            if isinstance(spec, Layout):
+                call_args.append(len(grid_args))
+                grid_args.append(top_arg)
+                shardings.append(
+                    [
+                        p.axis if isinstance(p, Layout.Shard) else -1
+                        for p in spec.partitions
+                    ]
+                )
+            else:
+                call_args.append(top_arg)
         with self.get_ip():
-            op = allo_d.GridMapOp(inputs, outputs, shardings, grid)
+            op = allo_d.GridMapOp(grid_args, shardings, grid)
             block = op.block
+        block_args = list(block.arguments)
+        for i in range(len(call_args)):
+            if isinstance(call_args[i], int):
+                call_args[i] = block_args[call_args[i]]
         func_d.CallOp(
             [],
             FlatSymbolRefAttr.get(callee_name),
-            list(block.arguments) + shared,
+            call_args,
             ip=InsertionPoint.at_block_begin(block),
         )
 

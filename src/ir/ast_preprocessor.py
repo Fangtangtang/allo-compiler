@@ -177,9 +177,10 @@ class ASTPreProcessor(ast.NodeTransformer):
                         for idx, v in enumerate(work_def.arg_kw.value.elts):
                             if v.id == name:
                                 return work_def.args.args[idx]
+                        # add as work's argument
                         work_def.arg_kw.value.elts.append(
                             ast.Name(id=name, ctx=ast.Load())
-                        )  # add as new argument
+                        )
                         arg = copy.deepcopy(var)
                         work_def.args.args.append(arg)
                         self.scopes[i + 1].vars[name] = arg
@@ -1306,7 +1307,7 @@ class ASTPreProcessor(ast.NodeTransformer):
             assert len(axes) == len(arg.shape), "Invalid sharding"
             partitions = []
             for axe in axes:
-                if isinstance(axe, ast.Constant) and axe_value.value is None:
+                if isinstance(axe, ast.Constant) and axe.value is None:
                     partitions.append(Layout.Replicate)
                 elif isinstance(axe, ast.Name):
                     axe_value = self.get_symbol(axe.id)
@@ -1509,6 +1510,7 @@ class ASTPreProcessor(ast.NodeTransformer):
                 else:
                     raise RuntimeError("Invalid work declaration")
             node.grid = grid
+            # 'arguments' from unit
             node.arg_kw = ast.keyword("args", ast.List([]))
             node.decorator_list[0].keywords.append(node.arg_kw)
             node, _ = self.visit_function_signature(node, instantiate=instantiate)

@@ -45,7 +45,8 @@ def test_hierachical_function():
     def inner(A: float32[M, K], B: float32[K, N], C: float32[M, N]):
         @spmw.work(grid=[P0, P1])
         def gemm():
-            pi, pj = spmw.get_wid()
+            x, y = spmw.axes()
+            pi, pj = x.id, y.id
             Mt: ConstExpr[int32] = M // P0
             Nt: ConstExpr[int32] = N // P1
             for i in range(pi * Mt, (pi + 1) * Mt):
@@ -57,8 +58,8 @@ def test_hierachical_function():
     def top(A: float32[M, K], B: float32[K, N], C1: float32[M, N], C2: float32[M, N]):
         @spmw.work(grid=[2])
         def wrapper():
-            i = spmw.get_wid()
-            if i == 0:
+            x = spmw.axes()
+            if x.id == 0:
                 inner(A, B, C1)
             else:
                 inner(A, B, C2)

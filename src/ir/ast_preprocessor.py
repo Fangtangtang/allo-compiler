@@ -908,7 +908,7 @@ class ASTPreProcessor(ast.NodeTransformer):
             else [node.targets[0]]
         )
         node_list = []
-        if isinstance(node.value, (ast.Call, ast.Attribute)):
+        if isinstance(node.value, ast.Call):
             callee = self.visit(node.value)
             if getattr(callee, "is_symbol", False):  # used to redirect
                 callee = [callee]
@@ -941,6 +941,9 @@ class ASTPreProcessor(ast.NodeTransformer):
         assert len(targets) == len(values)
         # FIXME: this has the potential issue of serializing simultaneous assignment
         for target, rhs in zip(targets, values):
+            if getattr(rhs, "is_symbol", False):  # used to redirect
+                self.visit_assign_symbol([target], [rhs])
+                continue
             if isinstance(target, ast.Name):
                 target_ = self.get_symbol(target.id, allow_missing=True)
                 if target_ is None:
@@ -1528,16 +1531,17 @@ class ASTPreProcessor(ast.NodeTransformer):
                 wids, axes = [], []
                 for i in range(len(grid)):
                     target = ast.Name(id=f"__wid_{i}", ctx=ast.Store())  # reserved word
-                    target.dtype, target.shape = Index(), tuple()
-                    target.dtype.constexpr = True  # immutable
-                    # unique symbol, should be used to replace 'references'
-                    target.is_symbol = True
-                    axe = Axes(idx=i, wid=target)
-                    axes.append(axe)
+                    target_ = copy.deepcopy(target)
                     wids.append(target)
+                    target_.dtype, target_.shape = Index(), tuple()
+                    target_.dtype.constexpr = True  # immutable
+                    target_.is_symbol = True
+                    target_.ctx = ast.Load()
+                    axe = Axes(idx=i, wid=target_)
+                    axes.append(axe)
                 self.work_meta["axes"] = axes
                 op = ast.Assign(
-                    targets=wids,
+                    targets=wids,  # FIXME: not right
                     value=ast.Call(
                         func=ast.Attribute(
                             value=ast.Name(id="__allo__", ctx=ast.Load()),

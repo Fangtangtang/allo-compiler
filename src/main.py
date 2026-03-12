@@ -9,9 +9,6 @@ from .ir.utils import SymbolTable, get_global_vars
 from .ir.ast_preprocessor import ASTPreProcessor
 from .ir.ir_builder import IRBuilder
 from allo.backend.llvm import LLVMModule
-from allo.backend.hls import HLSModule
-from allo._mlir.dialects import allo as allo_d, func as func_d
-from allo._mlir.passmanager import PassManager as mlir_pass_manager
 
 
 def build(fn: Union[Callable, str], instantiate: list = None, typing: str = None):
@@ -42,41 +39,3 @@ def process(fn: Union[Callable, str], instantiate: list = None, typing: str = No
     module, top_name = build(fn, instantiate, typing)
     print(module)
     return LLVMModule(module, top_name)
-
-
-def process_spmw(fn: Union[Callable, str], instantiate: list = None):
-    """
-    Compile the input function in SPMW model.
-    """
-    module, top_name = build(fn, instantiate)
-    print(module)
-    # return module, top_name
-
-
-def to_hls(fn: Union[Callable, str], instantiate: list = None, project=None):
-    module, top_name = build(fn, instantiate, "hls")
-    print(module)
-
-    for func in module.body.operations:
-        if isinstance(func, func_d.FuncOp):
-            allo_d.copy_on_write_on_function(func)
-
-    passes = ["lower-memcopy-ops", "canonicalize"]
-    pipeline = f'builtin.module({",".join(passes)})'
-    with module.context:
-        mlir_pass_manager.parse(pipeline).run(module.operation)
-
-    print(module)
-    func_args = {}
-    mod = HLSModule(
-        module,
-        top_func_name=top_name,
-        platform="vitis_hls",
-        mode="sw_emu",
-        project=project if project else "top.prj",
-        ext_libs=[],
-        func_args=func_args,
-        wrap_io=False,
-    )
-
-    return mod

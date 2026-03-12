@@ -1,4 +1,0 @@
-[submodule "externals/allo"]
-	path = externals/allo
-	url = git@github.com:Fangtangtang/allo.git
-	branch = refactor-allo-based

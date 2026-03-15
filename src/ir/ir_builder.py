@@ -38,6 +38,7 @@ from allo.memory import Layout
 from allo.ir.utils import MockArg, MockCallResultTuple
 from .utils import report_error, SymbolTable, Scope
 from .builtin import BUILTIN_HANDLERS
+from .config import _INTERFACE_CONFIG
 
 
 class IRBuilder(ast.NodeVisitor):
@@ -247,7 +248,7 @@ class IRBuilder(ast.NodeVisitor):
                 node.func.value, ast.Name
             ):
                 # builtin
-                if node.func.value.id == "__allo__":
+                if node.func.value.id == _INTERFACE_CONFIG.builtin:
                     handler = self.get_builtin_handler(node.func.attr)
                     if handler:
                         return handler.get_affine_expr(node, ivs, symbols)
@@ -409,7 +410,7 @@ class IRBuilder(ast.NodeVisitor):
         if (
             isinstance(node.value.func, ast.Attribute)
             and isinstance(node.value.func.value, ast.Name)
-            and node.value.func.value.id == "__allo__"
+            and node.value.func.value.id == _INTERFACE_CONFIG.builtin
         ):
             name = node.value.func.attr
             assert name in BUILTIN_HANDLERS
@@ -621,7 +622,7 @@ class IRBuilder(ast.NodeVisitor):
         if isinstance(node.func, ast.Attribute) and isinstance(
             node.func.value, ast.Name
         ):
-            if node.func.value.id == "__allo__":
+            if node.func.value.id == _INTERFACE_CONFIG.builtin:
                 # handling for builtins
                 name = node.func.attr
                 assert name in BUILTIN_HANDLERS

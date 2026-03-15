@@ -10,7 +10,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 import numpy as np
 import sympy
-from .utils import get_ast, report_error, SymbolTable, Scope, ErrorValue
+from .utils import get_ast, report_error, ErrorMsg, SymbolTable, Scope, ErrorValue
 from .config import _INTERFACE_CONFIG
 from allo.spmw import FunctionType
 from allo.ir.types import (
@@ -100,6 +100,9 @@ class ASTPreProcessor(ast.NodeTransformer):
 
         self.scopes: list[Scope] = []
 
+        # error reporting
+        self.err: ErrorMsg = None
+
     @staticmethod
     def _copy_loc(new_node: ast.AST, old_node: ast.AST) -> ast.AST:
         """Copy source location from old_node to new_node and fill missing locations in children."""
@@ -124,7 +127,7 @@ class ASTPreProcessor(ast.NodeTransformer):
                 name = self.current_func or self.current_namespace
                 if name is not None:
                     source_file = self.symbol_table.functions[name]._source
-                    report_error(e, node, source_file=source_file)
+                    self.err = ErrorMsg(e, node, source_file=source_file)
                     e._reported = True
             raise
         # propagate source location
@@ -212,14 +215,19 @@ class ASTPreProcessor(ast.NodeTransformer):
             fn: The function to process.
             instantiate: The arguments to instantiate the function. default to None.
         """
-        func: ast.FunctionDef = get_ast(fn)
-        # if instantiate is not None, we need to use the args to instantiate the unique function
-        node, top_name = self.visit_function_signature(func, instantiate)
-        while self.worklist:
-            n = self.visit_function_body(
-                self.symbol_table.functions[self.worklist.popleft()]
-            )
-        return func, top_name
+        try:
+            func: ast.FunctionDef = get_ast(fn)
+            # if instantiate is not None, we need to use the args to instantiate the unique function
+            node, top_name = self.visit_function_signature(func, instantiate)
+            while self.worklist:
+                n = self.visit_function_body(
+                    self.symbol_table.functions[self.worklist.popleft()]
+                )
+            return func, top_name
+        except:
+            if self.err is not None:
+                report_error(self.err)
+            raise
 
     def eval_constant(self, node, consts=None):
         """
@@ -1376,11 +1384,6 @@ class ASTPreProcessor(ast.NodeTransformer):
             func = self.resolve_node(node.func.value)
             return self.visit_call_kernel(node, func, instantiate)
         if isinstance(node.func, ast.Attribute):
-            if (
-                isinstance(node.func.value, ast.Name)
-                and node.func.value.id == _INTERFACE_CONFIG.builtin
-            ):
-                return node
             module = self.resolve_node(node.func)
             if module and module.__module__.startswith(_INTERFACE_CONFIG.spmw):
                 attr = module.__name__
@@ -1388,9 +1391,12 @@ class ASTPreProcessor(ast.NodeTransformer):
                 values = self.work_meta[attr]
                 return values  # list of symbols
             # builtin methods
-            ret = self.visit_method(node)
-            if ret is not None:
-                return ret
+            try:
+                ret = self.visit_method(node)
+                if ret is not None:
+                    return ret
+            except:
+                pass
         # TODO
         return node
 
